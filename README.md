@@ -1,2 +1,3 @@
 # di
-DI para golang
+
+Dependency injection for Go, using Generics
