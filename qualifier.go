@@ -7,7 +7,7 @@ import (
 type defaultQualifier string
 
 type Qualifier[T any, Q any] interface {
-	getValue() T
+	Value() T
 	getValueType() reflect.Type
 	getQualifierType() reflect.Type
 }
@@ -27,7 +27,7 @@ type qualified[T any, Q any] struct {
 	qualifierType reflect.Type
 }
 
-func (q *qualified[T, Q]) getValue() T {
+func (q *qualified[T, Q]) Value() T {
 	return q.value
 }
 

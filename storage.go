@@ -8,6 +8,7 @@ import (
 )
 
 type ctxKeyType int // unexported type for ctxKey to avoid collisions.
+type mockFn func(ctx context.Context) any
 
 var (
 	ctxKey           ctxKeyType
@@ -15,6 +16,8 @@ var (
 	providers        = map[reflect.Type][]*provider{}
 	contextStorages  = sync.Map{}
 	singletonStorage = &storage{}
+	testingHasMock   = false
+	testingMocks     = map[reflect.Type]mockFn{} // see Mock
 )
 
 type storage struct {

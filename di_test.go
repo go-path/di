@@ -73,7 +73,7 @@ func TestEndToEndSuccess(t *testing.T) {
 			result  testService0
 			service = &testServiceImpl{}
 		)
-		err = Singleton(func() testService0 {
+		err = Provide(func() testService0 {
 			require.False(t, called, "constructor must be called exactly once")
 			called = true
 			return service
