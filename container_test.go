@@ -56,14 +56,12 @@ type testProvider struct {
 
 func testParams(types ...reflect.Type) []reflect.Type {
 	params := make([]reflect.Type, 0, len(types))
-	for _, t := range types {
-		params = append(params, t)
-	}
+	params = append(params, types...)
 	return params
 }
 
 func TestEndToEndSuccess(t *testing.T) {
-	providers = map[reflect.Type][]*provider{}
+	Clear()
 
 	t.Run("func constructor", func(t *testing.T) {
 

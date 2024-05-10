@@ -30,11 +30,12 @@ import "reflect"
 // identified with an incremental positive integer (i.e. 1, 2, 3...).
 // A value of 0 for a node represents a sentinel error value.
 type graph struct {
-	nodes []*provider // all the nodes defined in the graph.
+	container *container
+	nodes     []*Provider // all the nodes defined in the graph.
 }
 
 // add adds a new value to the graph and returns its order.
-func (g *graph) add(node *provider) int {
+func (g *graph) add(node *Provider) int {
 	order := len(g.nodes)
 	g.nodes = append(g.nodes, node)
 	return order
@@ -55,15 +56,15 @@ func (g *graph) edgesFrom(u int) []int {
 			// ignore context
 			continue
 		}
-		orders = append(orders, getParamOrder(param)...)
+		orders = append(orders, g.getParamOrder(param)...)
 	}
 	return orders
 }
 
 // getParamOrder returns the order(s) of a parameter type.
-func getParamOrder(param reflect.Type) []int {
+func (g *graph) getParamOrder(param reflect.Type) []int {
 	var orders []int
-	for _, p := range providers[param] {
+	for _, p := range g.container.providers[param] {
 		orders = append(orders, p.order)
 	}
 	return orders

@@ -1,7 +1,5 @@
 package di
 
-type defaultQualifier string
-
 type Qualifier[T any, Q any] interface {
 	Value() T
 }

@@ -20,7 +20,6 @@
 package di
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,10 +62,10 @@ func TestGraphIsAcyclic(t *testing.T) {
 		},
 	}
 	for _, tt := range testCases {
-		providers = map[reflect.Type][]*provider{}
+		Clear()
 		g := &graph{}
 		for _, pt := range tt {
-			p := &provider{
+			p := &Provider{
 				params: pt.params,
 			}
 			p.order = g.add(p)
@@ -78,6 +77,7 @@ func TestGraphIsAcyclic(t *testing.T) {
 }
 
 func TestGraphIsCyclic(t *testing.T) {
+	c := New()
 	testCases := []struct {
 		providers []testProvider
 		cycle     []int
@@ -123,12 +123,13 @@ func TestGraphIsCyclic(t *testing.T) {
 		},
 	}
 	for _, tt := range testCases {
-		providers = map[reflect.Type][]*provider{}
-		g := &graph{}
+		c.Clear()
+		cc := c.(*container)
+		g := cc.graph
 		for _, pt := range tt.providers {
-			p := &provider{params: pt.params}
+			p := &Provider{params: pt.params}
 			p.order = g.add(p)
-			providers[pt.key] = append(providers[pt.key], p)
+			cc.providers[pt.key] = append(cc.providers[pt.key], p)
 		}
 		ok, c := g.isAcyclic()
 		assert.False(t, ok)
