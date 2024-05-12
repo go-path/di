@@ -73,6 +73,20 @@ func Get[T any](contexts ...context.Context) (o T, e error) {
 	return
 }
 
+func Key[T any]() reflect.Type {
+	var instance *T
+	return reflect.TypeOf(instance)
+}
+
+func KeyOf(t any) reflect.Type {
+	if tt, ok := t.(reflect.Type); ok {
+		return reflect.PointerTo(tt)
+	} else if tt, ok := t.(reflect.Value); ok {
+		return reflect.PointerTo(tt.Type())
+	}
+	return reflect.PointerTo(reflect.TypeOf(t))
+}
+
 func Global() Container {
 	return global
 }

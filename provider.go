@@ -7,6 +7,8 @@ import (
 	"reflect"
 )
 
+var ErrMissingDependency = errors.New("missing dependencies")
+
 type callResult struct {
 	err        error
 	value      any
@@ -115,7 +117,7 @@ func (p *Provider) instantiate(contexts ...context.Context) (o any, e error) {
 func (p *Provider) call(ctx context.Context) (out *callResult, callError error) {
 
 	if err := p.shallowCheckDependencies(); err != nil {
-		callError = errors.Join(fmt.Errorf("missing dependencies for function %v", p.ctorType), err)
+		callError = errors.Join(fmt.Errorf("missing dependencies for function %v", p.ctorType), ErrMissingDependency, err)
 		return
 	}
 

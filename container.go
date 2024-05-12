@@ -10,6 +10,13 @@ import (
 	"testing"
 )
 
+var (
+	ErrManyCandidates    = errors.New("multiple candidates found")
+	ErrContextRequired   = errors.New("context required")
+	ErrInvalidProvider   = errors.New("invalid provider")
+	ErrCandidateNotFound = errors.New("no candidate found")
+)
+
 type Container interface {
 	Start(contexts ...context.Context) error
 	AddContext(ctx context.Context) context.Context
@@ -79,7 +86,7 @@ func (c *container) MustProvide(ctor any, opts ...ProviderOption) {
 func (c *container) Provide(ctor any, opts ...ProviderOption) error {
 	ctorType := reflect.TypeOf(ctor)
 	if ctorType == nil {
-		return errors.New("can't createProvider an untyped nil")
+		return errors.Join(errors.New("can't createProvider an untyped nil"), ErrInvalidProvider)
 	}
 
 	var params []reflect.Type
@@ -110,7 +117,7 @@ func (c *container) Provide(ctor any, opts ...ProviderOption) error {
 				if i == 0 {
 					useContext = true
 				} else {
-					return fmt.Errorf("context.Context should be the first parameter in fucntion %v", ctorType)
+					return errors.Join(fmt.Errorf("context.Context should be the first parameter in fucntion %v", ctorType), ErrInvalidProvider)
 				}
 			}
 			params = append(params, reflect.PointerTo(inType))
@@ -132,22 +139,20 @@ func (c *container) Provide(ctor any, opts ...ProviderOption) error {
 					returnType = _typeNilReturn
 					returnErrIdx = 0
 				}
-				break
 			case 2:
 				if isError(returnType) {
 					// ex. "func() (error, Service)"
-					return fmt.Errorf("%v has invalid return type (first) %v", ctorType, returnType)
+					return errors.Join(fmt.Errorf("%v has invalid return type (first) %v", ctorType, returnType), ErrInvalidProvider)
 				}
 
 				secondType := ctorType.Out(1)
 				if !isError(secondType) {
 					// ex. "func() (ServiceA, ServiceB)"
-					return fmt.Errorf("%v has invalid return type (second) %v", ctorType, secondType)
+					return errors.Join(fmt.Errorf("%v has invalid return type (second) %v", ctorType, secondType), ErrInvalidProvider)
 				}
 				returnErrIdx = 1
-				break
 			default:
-				return fmt.Errorf("%v has invalid return", ctorType)
+				return errors.Join(fmt.Errorf("%v has invalid return", ctorType), ErrInvalidProvider)
 			}
 		}
 	}
@@ -300,7 +305,8 @@ func (c *container) Get(key reflect.Type, contexts ...context.Context) (o any, e
 		s = c.singletonStorage
 	} else if p.scope == ContextScope {
 		if ss, ok := c.getStore(ctx); !ok {
-			e = fmt.Errorf("o getProvider %v requer a inicialização do contexto", p)
+			// ErrContextRequired
+			e = errors.Join(fmt.Errorf("getProvider %v requires context initialization", p), ErrContextRequired)
 			return
 		} else {
 			s = ss
@@ -417,7 +423,7 @@ func (c *container) getProvider(key reflect.Type) (p *Provider, e error) {
 
 	switch len(candidates) {
 	case 0:
-		e = fmt.Errorf("%v não foi encontrado candidato para o tipo", key)
+		e = errors.Join(fmt.Errorf("%v no candidate found for type", key), ErrCandidateNotFound)
 	case 1:
 		p = candidates[0]
 	default:
@@ -429,7 +435,7 @@ func (c *container) getProvider(key reflect.Type) (p *Provider, e error) {
 			}
 		}
 		if p == nil {
-			e = fmt.Errorf("%v multiplos candidatos para o tipo", key)
+			e = errors.Join(fmt.Errorf("%v multiple candidates for type", key), ErrManyCandidates)
 		}
 	}
 
