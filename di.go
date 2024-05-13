@@ -73,20 +73,6 @@ func Get[T any](contexts ...context.Context) (o T, e error) {
 	return
 }
 
-func Key[T any]() reflect.Type {
-	var instance *T
-	return reflect.TypeOf(instance)
-}
-
-func KeyOf(t any) reflect.Type {
-	if tt, ok := t.(reflect.Type); ok {
-		return reflect.PointerTo(tt)
-	} else if tt, ok := t.(reflect.Value); ok {
-		return reflect.PointerTo(tt.Type())
-	}
-	return reflect.PointerTo(reflect.TypeOf(t))
-}
-
 func Global() Container {
 	return global
 }
@@ -101,4 +87,40 @@ func Clear() {
 
 func Mock(mock any) (cleanup func()) {
 	return global.Mock(mock)
+}
+
+func Key[T any]() reflect.Type {
+	var instance *T
+	return reflect.TypeOf(instance)
+}
+
+func KeyOf(t any) reflect.Type {
+	if tt, ok := t.(reflect.Type); ok {
+		return reflect.PointerTo(tt)
+	} else if tt, ok := t.(reflect.Value); ok {
+		return reflect.PointerTo(tt.Type())
+	}
+	return reflect.PointerTo(reflect.TypeOf(t))
+}
+
+func AllOf[T any](ctn Container, ctx context.Context) ([]T, error) {
+	t := reflect.TypeOf((*T)(nil)).Elem()
+
+	instances, err := ctn.Instances(ctx, func(p *Provider) bool {
+		return p.Type().Implements(t)
+	}, nil)
+
+	if err != nil || len(instances) == 0 {
+		return nil, err
+	}
+
+	var objects []T
+
+	for _, i := range instances {
+		if o, ok := i.(T); ok {
+			objects = append(objects, o)
+		}
+	}
+
+	return objects, nil
 }
