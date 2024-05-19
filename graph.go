@@ -31,11 +31,11 @@ import "reflect"
 // A value of 0 for a node represents a sentinel error value.
 type graph struct {
 	container *container
-	nodes     []*Provider // all the nodes defined in the graph.
+	nodes     []*Factory // all the nodes defined in the graph.
 }
 
 // add adds a new value to the graph and returns its order.
-func (g *graph) add(node *Provider) int {
+func (g *graph) add(node *Factory) int {
 	order := len(g.nodes)
 	g.nodes = append(g.nodes, node)
 	return order
@@ -51,12 +51,17 @@ func (g *graph) order() int { return len(g.nodes) }
 func (g *graph) edgesFrom(u int) []int {
 	var orders []int
 	p := g.nodes[u]
-	for i, param := range p.params {
-		if p.useContext && i == 0 {
+	for _, paramKey := range p.parameterKeys {
+		if isContext(paramKey) {
 			// ignore context
 			continue
 		}
-		orders = append(orders, g.getParamOrder(param)...)
+
+		// if p.useContext && i == 0 {
+		// 	// ignore context
+		// 	continue
+		// }
+		orders = append(orders, g.getParamOrder(paramKey)...)
 	}
 	return orders
 }
@@ -64,7 +69,7 @@ func (g *graph) edgesFrom(u int) []int {
 // getParamOrder returns the order(s) of a parameter type.
 func (g *graph) getParamOrder(param reflect.Type) []int {
 	var orders []int
-	for _, p := range g.container.providers[param] {
+	for _, p := range g.container.factories[param] {
 		orders = append(orders, p.order)
 	}
 	return orders
