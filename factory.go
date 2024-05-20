@@ -12,18 +12,8 @@ type mockFn func(ctx context.Context) any
 
 type ConditionFn func(Container, *Factory) bool
 
-// InitializerComponent interface to be implemented by components that want to execute callback on creation
-type InitializerComponent interface {
-	Initialize()
-}
-
-// DisposableComponent interface to be implemented by components that want to release resources on destruction
-type DisposableComponent interface {
-	// Destroy invoked by the container on destruction of a component.
-	Destroy()
-}
-
 // Factory is a node in the dependency graph that represents a constructor provided by the user
+// and the basic attributes of the returned component (if applicable)
 type Factory struct {
 	order           int                   // order of this node in graph
 	key             reflect.Type          // key for this factory
@@ -32,9 +22,9 @@ type Factory struct {
 	returnType      reflect.Type          // type information about return type.
 	returnErrorIdx  int                   // error return index (-1, 0 or 1)
 	returnValueIdx  int                   // value return index (0 or 1)
+	parameters      []*Parameter          // information about factory parameters.
 	parameterKeys   []reflect.Type        // type information about factory parameters.
 	scope           string                // Factory scope
-	primary         bool                  // defines a preference when multiple providers of the same type are present
 	priority        int                   // priority of use
 	startup         bool                  // will be initialized with container
 	startupPriority int                   // priority of initialization
@@ -72,7 +62,7 @@ func (f *Factory) Scope() string {
 }
 
 func (f *Factory) Primary() bool {
-	return f.primary
+	return f.HasQualifier(_primaryQualifierKey)
 }
 
 func (f *Factory) Mock() bool {
@@ -121,6 +111,15 @@ func (f *Factory) StartupPriority() int {
 
 func (f *Factory) Priority() int {
 	return f.priority
+}
+
+func (f *Factory) HasQualifier(q reflect.Type) bool {
+	for qualifier := range f.qualifiers {
+		if qualifier == q {
+			return true
+		}
+	}
+	return false
 }
 
 // func (f *Factory) Load(contexts ...context.Context) error {

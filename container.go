@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"sync"
@@ -20,9 +21,9 @@ type Container interface {
 	// RegisterScope Register the given scope, backed by the given ScopeI implementation.
 	RegisterScope(name string, scope ScopeI) error
 
-	Register(ctor any, opts ...ComponentConfig)
+	Register(ctor any, opts ...FactoryConfig)
 
-	ShouldRegister(ctor any, opts ...ComponentConfig) error
+	ShouldRegister(ctor any, opts ...FactoryConfig) error
 
 	// Get return an instance, which may be shared or independent, of the specified component.
 	Get(key reflect.Type, contexts ...context.Context) (any, error)
@@ -31,12 +32,14 @@ type Container interface {
 	// Does not consider any hierarchy this container may participate in.
 	Contains(key reflect.Type) bool
 
-	Filter(options ...ComponentConfig) *FilteredFactories
+	Filter(options ...FactoryConfig) *FilteredFactories
 
-	ObjectFactory(factory *Factory, contexts ...context.Context) ObjectFactory
+	GetObjectFactory(factory *Factory, managed bool, contexts ...context.Context) ObjectFactory
+
+	GetObjectFactoryFor(key reflect.Type, managed bool, contexts ...context.Context) ObjectFactory
 
 	// ResolveArgs returns an ordered list of values which may be passed directly to the Factory Create method
-	ResolveArgs(ctx context.Context, parameterTypes []reflect.Type) ([]reflect.Value, error)
+	ResolveArgs(factory *Factory, contexts ...context.Context) ([]reflect.Value, error)
 
 	// Destroy this container
 	Destroy() error
@@ -65,10 +68,10 @@ type container struct {
 	locked         bool // by design, we lock the container after initialization
 	graph          *graph
 	parent         Container
+	paramsMu       sync.RWMutex
 	mockMu         sync.Mutex
-	allKnownKeys   map[reflect.Type]bool                  // dependencias conhecidas
-	alias          map[reflect.Type]map[reflect.Type]bool // tipos compatíveis
 	scopes         map[string]ScopeI
+	knownParams    map[reflect.Type]*Parameter
 	factories      map[reflect.Type][]*Factory
 	singletons     *scopeSingleton
 	testingHasMock bool
@@ -96,13 +99,12 @@ func New(parent Container) Container {
 	c := &container{
 		graph:          &graph{},
 		parent:         parent,
-		alias:          make(map[reflect.Type]map[reflect.Type]bool), // {A:{B:true,C:true}}, if A is missing we can use B instead
 		scopes:         make(map[string]ScopeI),
 		factories:      make(map[reflect.Type][]*Factory),
 		singletons:     newSingletonScope(),
 		testingHasMock: false,
 		testingMocks:   make(map[reflect.Type]mockFn),
-		allKnownKeys:   make(map[reflect.Type]bool),
+		knownParams:    make(map[reflect.Type]*Parameter),
 	}
 
 	c.scopes[SCOPE_SINGLETON] = c.singletons
@@ -113,7 +115,9 @@ func New(parent Container) Container {
 }
 
 func (c *container) Initialize(contexts ...context.Context) error {
+	c.paramsMu.Lock()
 	if c.locked {
+		c.paramsMu.Unlock()
 		return ErrContainerLocked
 	}
 	c.locked = true
@@ -121,34 +125,12 @@ func (c *container) Initialize(contexts ...context.Context) error {
 	ctx := getContext(contexts...)
 
 	// update candidates alias
-	for key := range c.factories {
-		returnType := key.Elem()
-		if returnType == _typeNilReturn {
-			continue
-		}
-		for paramKey := range c.allKnownKeys {
-			paramType := paramKey.Elem()
+	c.refreshAliasAll()
 
-			if returnType == paramType {
-				continue
-			}
+	c.paramsMu.Unlock()
 
-			isCompatible := returnType.AssignableTo(paramType)
-
-			if isCompatible {
-				mm, exist := c.alias[paramKey]
-				if !exist {
-					mm = make(map[reflect.Type]bool)
-					c.alias[paramKey] = mm
-				}
-				mm[key] = true
-				fmt.Printf("[di] '%v' is a candidate for '%v'\n", returnType, paramType)
-			}
-		}
-	}
-
-	return c.Filter(initializersStereotype).Sort(nil).Foreach(func(f *Factory) (bool, error) {
-		if _, _, err := c.ObjectFactory(f, ctx)(); err != nil {
+	return c.Filter(initializersStereotype).Foreach(func(f *Factory) (bool, error) {
+		if _, _, err := c.GetObjectFactory(f, true, ctx)(); err != nil {
 			return true, err
 		}
 
@@ -174,13 +156,13 @@ func (c *container) RegisterScope(name string, scope ScopeI) error {
 	return nil
 }
 
-func (c *container) Register(ctor any, opts ...ComponentConfig) {
+func (c *container) Register(ctor any, opts ...FactoryConfig) {
 	if err := c.ShouldRegister(ctor, opts...); err != nil {
 		panic(err)
 	}
 }
 
-func (c *container) ShouldRegister(funcOrRef any, options ...ComponentConfig) error {
+func (c *container) ShouldRegister(funcOrRef any, options ...FactoryConfig) error {
 	if c.locked {
 		return ErrContainerLocked
 	}
@@ -290,7 +272,7 @@ func (c *container) ShouldRegister(funcOrRef any, options ...ComponentConfig) er
 	if factory.ReturnsValue() {
 		if returnType.Implements(_typeInitializer) {
 			initializer := func(object any) {
-				if d, ok := object.(InitializerComponent); ok {
+				if d, ok := object.(Initializable); ok {
 					d.Initialize()
 				}
 			}
@@ -299,7 +281,7 @@ func (c *container) ShouldRegister(funcOrRef any, options ...ComponentConfig) er
 
 		if returnType.Implements(_typeDisposable) {
 			disposer := func(object any) {
-				if d, ok := object.(DisposableComponent); ok {
+				if d, ok := object.(Disposable); ok {
 					d.Destroy()
 				}
 			}
@@ -342,25 +324,214 @@ func (c *container) ShouldRegister(funcOrRef any, options ...ComponentConfig) er
 		return ErrCycleDetected
 	}
 
-	// update alias
-	c.allKnownKeys[returnKey] = true
+	// update cache
+	c.GetParam(returnKey)
 	for _, paramKey := range paramsKeys {
-		if c.allKnownKeys[paramKey] {
-			continue
-		}
-		c.allKnownKeys[paramKey] = true
+		factory.parameters = append(factory.parameters, c.GetParam(paramKey))
 	}
 
 	return nil
 }
 
-// ParseParam extract param information from a type
-func (c *container) ParseParam(key reflect.Type) *Parameter {
-	return nil
+// GetParam get param information
+func (c *container) GetParam(key reflect.Type) *Parameter {
+	c.paramsMu.RLock()
+	param, exists := c.knownParams[key]
+	c.paramsMu.RUnlock()
+	if !exists {
+		c.paramsMu.Lock()
+		param, exists = c.knownParams[key] // 2nd check
+		if !exists {
+			param = c.parseParam(key)
+			c.knownParams[key] = param
+			if c.locked {
+				// update candidate list (alias)
+				c.refreshAlias(param)
+			}
+		}
+		c.paramsMu.Unlock()
+
+		if param.Qualified() || param.Provider() {
+			// cache value type too
+			c.GetParam(param.Value())
+		}
+	}
+	return param
 }
 
+// parseParam extract param information from a type
+func (c *container) parseParam(paramKey reflect.Type) *Parameter {
+
+	var isProvider bool
+	var isUnmanaged bool
+	var isQualified bool
+	valueType := paramKey
+
+	var qualifierType reflect.Type
+	var funcWithImpl func(any) reflect.Value
+
+	if paramKey.Kind() == reflect.Struct {
+
+		isProvider = strings.HasPrefix(paramKey.String(), "di.Provider[")
+		isUnmanaged = strings.HasPrefix(paramKey.String(), "di.Unmanaged[")
+		isQualified = strings.HasPrefix(paramKey.String(), "di.Qualified[")
+
+		if isUnmanaged {
+			isProvider = true
+		}
+
+		if isProvider || isQualified {
+			var funcWith reflect.Method
+			var funcType reflect.Method
+			var funcQualifier reflect.Method
+
+			// func (q Provider[T]) With(supplier func() (any, error)) Provider[T]
+			// func (q Qualified[T, Q]) With(value any) Qualified[T, Q]
+			funcWith, isProvider = paramKey.MethodByName("With")
+			if !isProvider || funcWith.Type.NumIn() != 2 || funcWith.Type.NumOut() != 1 {
+				isProvider = false
+			}
+
+			if isProvider || isQualified {
+				funcType, isQualified = paramKey.MethodByName("Type")
+				if !isQualified || funcType.Type.NumIn() != 1 || funcType.Type.NumOut() != 1 || !funcType.Type.Out(0).Implements(_typeReflectType) {
+					isQualified = false
+				}
+			}
+
+			// Value {di.Provider[Service]}
+			// Value {di.Qualified[Service, Qualifier]}
+			nptr_vl := reflect.New(paramKey).Elem()
+
+			if isProvider && isQualified {
+				funcQualifier, isQualified = paramKey.MethodByName("Qualifier")
+				if !isQualified || funcQualifier.Type.NumIn() != 1 || funcQualifier.Type.NumOut() != 1 || !funcQualifier.Type.Out(0).Implements(_typeReflectType) {
+					isQualified = false
+				}
+
+				if isQualified {
+					isProvider = false
+					qualifierResult := funcQualifier.Func.Call([]reflect.Value{nptr_vl})
+					qualifierType = qualifierResult[0].Interface().(reflect.Type)
+
+					// funcWithImpl = func(value any) reflect.Value {
+					// 	// func (q Provider[T]) With(supplier func() (any, error)) Provider[T]
+					// 	// func (q Qualified[T, Q]) With(value any) Qualified[T, Q]
+					// 	result := funcWith.Func.Call([]reflect.Value{nptr_vl, reflect.ValueOf(value)})
+					// 	return result[0]
+					// }
+				}
+			}
+
+			// args[i] = p.funcWithImpl(func() (any, error) {
+			// 	object, _, err := objectFactory()
+			// 	return object, err
+			// })
+			// return p.funcWithImpl(value)
+
+			// if isProvider {
+			// 	funcWithImpl = func(value any) reflect.Value {
+			// 		// func (q Provider[T]) With(supplier func() (any, error)) Provider[T]
+			// 		supplier := func() any {
+			// 			return value
+			// 		}
+			// 		result := funcWith.Func.Call([]reflect.Value{nptr_vl, reflect.ValueOf(supplier)})
+			// 		return result[0]
+			// 	}
+			// }
+
+			if isProvider || isQualified {
+				valueTypeResult := funcType.Func.Call([]reflect.Value{nptr_vl})
+				valueType = valueTypeResult[0].Interface().(reflect.Type)
+
+				funcWithImpl = func(value any) reflect.Value {
+					// func (q Qualified[T, Q]) With(value any) Qualified[T, Q]
+					// func (p Provider[T]) With(supplier func() (any, error)) Provider[T]
+					// func (u Unmanaged[T]) With(supplier func() (any, DisposableAdapter, error)) Unmanaged[T]
+					result := funcWith.Func.Call([]reflect.Value{nptr_vl, reflect.ValueOf(value)})
+					return result[0]
+				}
+			}
+
+			if isUnmanaged {
+				var funcUnmanaged reflect.Method
+				funcUnmanaged, isUnmanaged = paramKey.MethodByName("Unmanaged")
+				if !isUnmanaged || funcUnmanaged.Type.NumIn() != 1 || funcUnmanaged.Type.NumOut() != 1 {
+					isUnmanaged = false
+				}
+			}
+		}
+	}
+
+	return &Parameter{
+		key:          paramKey,
+		value:        valueType,
+		provider:     isProvider,
+		unmanaged:    isUnmanaged,
+		qualified:    isQualified,
+		qualifier:    qualifierType,
+		funcWithImpl: funcWithImpl,
+		factories:    make(map[*Factory]bool),
+		candidates:   make(map[*Factory]bool),
+	}
+}
+
+func (c *container) refreshAliasAll() {
+	c.refreshAliasFn(func(f func(*Parameter)) {
+		for _, param := range c.knownParams {
+			f(param)
+		}
+	})
+}
+
+func (c *container) refreshAlias(params ...*Parameter) {
+	c.refreshAliasFn(func(f func(*Parameter)) {
+		for _, param := range params {
+			f(param)
+		}
+	})
+}
+
+func (c *container) refreshAliasFn(loop func(func(*Parameter))) {
+	for returnType, factories := range c.factories {
+		if returnType == _typeNilReturn {
+			continue
+		}
+		loop(func(p *Parameter) {
+			paramType := p.Key()
+			if paramType == _typeNilReturn {
+				return
+			}
+
+			for _, f := range factories {
+				if _, exist := p.factories[f]; exist {
+					continue
+				}
+				if _, exist := p.candidates[f]; exist {
+					continue
+				}
+
+				isCandidate, isExactMatch := p.IsValidCandidate(f)
+				if !isCandidate {
+					continue
+				}
+
+				if isExactMatch {
+					p.factories[f] = true
+				} else {
+					p.candidates[f] = true
+					slog.Info(fmt.Sprintf("[di] '%s' is a candidate for '%s'\n", returnType.String(), paramType.String()))
+				}
+			}
+		})
+	}
+}
+
+// Get a managed component (by scope)
 func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance any, e error) {
 	ctx := getContext(contexts...)
+
+	param := c.GetParam(key)
 
 	// eagerly check singleton cache for manually registered singletons.
 	if singleton := c.singletons.getSingleton(key); singleton != nil {
@@ -381,109 +552,160 @@ func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance
 	}
 
 	var factory *Factory
-
-	factory, e = c.getProvider(key)
+	factory, e = c.getProvider(param)
 	if e != nil {
 		return
 	}
 
-	instance, _, e = c.createObject(factory, ctx)
+	instance, _, e = c.createObject(factory, ctx, true)
 	return
 }
 
-func (c *container) ObjectFactory(factory *Factory, contexts ...context.Context) ObjectFactory {
+// ObjectFactory get a factory for a managed component (by scope)
+func (c *container) GetObjectFactory(factory *Factory, managed bool, contexts ...context.Context) ObjectFactory {
 	return func() (any, DisposableAdapter, error) {
-		return c.createObject(factory, getContext(contexts...))
+		return c.createObject(factory, getContext(contexts...), managed)
 	}
 }
 
-func (c *container) createObject(factory *Factory, ctx context.Context) (instance any, disposer DisposableAdapter, e error) {
+func (c *container) GetObjectFactoryFor(key reflect.Type, managed bool, contexts ...context.Context) ObjectFactory {
+
+	// Check if component exists in this container
+	if c.parent != nil && !c.Contains(key) {
+		// not found -> check parent.
+		return c.parent.GetObjectFactoryFor(key, managed, contexts...)
+	}
+
+	param := c.GetParam(key)
+	var factory *Factory
+	factory, e := c.getProvider(param)
+
+	return func() (any, DisposableAdapter, error) {
+		if e != nil {
+			return nil, nil, e
+		}
+
+		return c.createObject(factory, getContext(contexts...), managed)
+	}
+}
+
+func (c *container) createObject(factory *Factory, ctx context.Context, managed bool) (instance any, disposer DisposableAdapter, e error) {
 	if factory.mock != nil {
 		instance = factory.mock(ctx)
 		return
 	}
 
-	key := factory.key
-
-	scopeName := factory.scope
-
-	if scopeName == "" {
-		e = errors.Join(fmt.Errorf("no scope name defined for component %v", factory), ErrNoScopeNameDefined)
-		return
-	}
-
-	scope := c.scopes[scopeName]
-	if scope == nil {
-		e = errors.Join(fmt.Errorf("no scope registered for name %s", scopeName), ErrNoScopeNameRegistered)
-		return
-	}
-
-	if err := c.checkMissingDependencies(factory.parameterKeys); err != nil {
+	if err := c.checkMissingDependencies(factory); err != nil {
 		e = errors.Join(ErrMissingDependency, fmt.Errorf("%v depends on missing dependency", factory.factoryType), err)
 		return
 	}
 
 	// args
 	var args []reflect.Value
-	if args, e = c.ResolveArgs(ctx, factory.parameterKeys); e != nil {
+	if args, e = c.ResolveArgs(factory, ctx); e != nil {
 		return
 	}
 
-	instanceCreated := false
+	key := factory.key
 
-	// create component instance
-	instance, e = scope.Get(ctx, key, func() (any, DisposableAdapter, error) {
+	objectFactory := func() (out any, disposer DisposableAdapter, err error) {
 		defer func() {
-			instanceCreated = true
+			if err == nil && factory.ReturnsValue() && len(factory.initializers) > 0 {
+				// instance created - initializers/post construct
+				args := []reflect.Value{reflect.ValueOf(out)}
+				for _, callback := range factory.initializers {
+					callback.Call(args)
+				}
+			}
 			ctx = c.afterCreation(key, ctx)
 		}()
 		ctx = c.beforeCreation(key, ctx)
 
-		if obj, err := factory.Create(args); err != nil {
-			return nil, nil, err
+		if out, err = factory.Create(args); err != nil {
+			return
 		} else if factory.Disposer() {
 			// add the instance to the list of disposable components in this container
 			disposer = &disposableAdapterImpl{
-				obj:       obj,
+				obj:       out,
 				factory:   factory,
 				container: c,
 				getContext: func() context.Context {
 					return ctx
 				},
 			}
-			return obj, disposer, nil
-		} else {
-			return obj, nil, nil
 		}
-	})
 
-	if e == nil && instanceCreated && factory.ReturnsValue() && len(factory.initializers) > 0 {
-		// initializers/post construct
-		postConstructArgs := []reflect.Value{reflect.ValueOf(instance)}
-		for _, callback := range factory.initializers {
-			callback.Call(postConstructArgs)
+		return
+	}
+
+	if managed {
+		scopeName := factory.scope
+
+		if scopeName == "" {
+			e = errors.Join(fmt.Errorf("no scope name defined for component %v", factory), ErrNoScopeNameDefined)
+			return
 		}
+
+		scope := c.scopes[scopeName]
+		if scope == nil {
+			e = errors.Join(fmt.Errorf("no scope registered for name %s", scopeName), ErrNoScopeNameRegistered)
+			return
+		}
+
+		// create component instance
+		instance, e = scope.Get(ctx, key, objectFactory)
+	} else {
+		instance, disposer, e = objectFactory()
 	}
 
 	return
 }
 
 // ResolveArgs returns an ordered list of values which may be passed directly to the Factory Create method
-func (c *container) ResolveArgs(ctx context.Context, parametersKeys []reflect.Type) ([]reflect.Value, error) {
-	args := make([]reflect.Value, len(parametersKeys))
-	for i, paramKey := range parametersKeys {
-		if isContext(paramKey) {
+func (c *container) ResolveArgs(factory *Factory, contexts ...context.Context) ([]reflect.Value, error) {
+	ctx := getContext(contexts...)
+	args := make([]reflect.Value, len(factory.parameters))
+	for i, param := range factory.parameters {
+		paramKey := param.Key()
+		if paramKey == _keyContext {
 			args[i] = reflect.ValueOf(ctx)
+		} else if paramKey == _keyContainer {
+			args[i] = reflect.ValueOf(c)
+		} else if param.Provider() {
+
+			// async get
+			objectFactory := c.GetObjectFactoryFor(param.Value(), !param.Unmanaged())
+			if param.Unmanaged() {
+				// user will be responsible for cleaning them up (call disposable.Dispose())
+				args[i] = param.ValueOf(func() (any, DisposableAdapter, error) {
+					object, disposable, err := objectFactory()
+					return object, disposable, err
+				})
+			} else {
+				// managed by scope (Ex. Request Scoped will destroy any Scoped("request"))
+				args[i] = param.ValueOf(func() (any, error) {
+					object, _, err := objectFactory()
+					return object, err
+				})
+			}
+
 		} else {
-			// if p.useContext && i == 0 {
-			// 	args[0] = reflect.ValueOf(ctx)
-			// 	continue
-			// }
-			v, err := c.Get(paramKey, ctx)
+			isQualifier := param.Qualified()
+
+			if isQualifier {
+				paramKey = param.Value()
+			}
+
+			value, err := c.Get(paramKey, ctx)
 			if err != nil {
 				return nil, err
 			}
-			args[i] = reflect.ValueOf(v)
+
+			if isQualifier {
+				args[i] = param.ValueOf(value)
+			} else {
+				args[i] = reflect.ValueOf(value)
+			}
 		}
 	}
 	return args, nil
@@ -491,29 +713,30 @@ func (c *container) ResolveArgs(ctx context.Context, parametersKeys []reflect.Ty
 
 // Checks that all direct dependencies of the provided parameters are present in
 // the container. Returns an error if not.
-func (c *container) checkMissingDependencies(parametersKeys []reflect.Type) error {
+func (c *container) checkMissingDependencies(f *Factory) error {
 
 	var missingDeps []string
 
-	for _, paramKey := range parametersKeys {
-		if isContext(paramKey) {
-			// ignore context
+	for _, param := range f.parameters {
+		paramKey := param.Key()
+		if paramKey == _keyContext || paramKey == _keyContainer {
+			// ignore context.Context and Container
 			continue
 		}
 
-		allProviders := c.factories[paramKey]
+		// allProviders := c.factories[paramKey]
 		// This means that there is no factory that provides this value,
 		// and it is NOT being decorated and is NOT optional.
 		// In the case that there is no providers but there is a decorated value
 		// of this type, it can be provided safely so we can safely skip this.
-		if len(allProviders) == 0 {
+		if !param.HasCandidates() {
 			if c.testingHasMock { // see Mock
 				if _, ok := c.testingMocks[paramKey]; ok {
 					continue
 				}
 			}
 
-			missingDeps = append(missingDeps, fmt.Sprintf("%v", paramKey.Elem()))
+			missingDeps = append(missingDeps, fmt.Sprintf("%v", paramKey))
 		}
 	}
 
@@ -567,25 +790,20 @@ func (c *container) Contains(key reflect.Type) bool {
 			return true
 		}
 	}
-	if len(c.factories[key]) > 0 {
-		return true
-	}
 
-	return false
-
+	param := c.GetParam(key)
+	return param.HasCandidates()
 }
 
-func (c *container) updateAliases() {
-
-}
-
-func (c *container) getProvider(key reflect.Type) (*Factory, error) {
+func (c *container) getProvider(p *Parameter) (*Factory, error) {
 
 	// TypeMatch check whether the component with the given type matches the specified type.
 	// More specifically, check whether a Get call for the given type would return an object
 	// that is assignable to the specified target type
 	// TypeMatch(key reflect.Type, typeToMatch Resolvable) (bool, error)
 	// GetFactory(key Resolvable, contexts ...context.Context) (*Factory, error)
+
+	key := p.Key()
 
 	// see Mock
 	if c.testingHasMock {
@@ -595,15 +813,16 @@ func (c *container) getProvider(key reflect.Type) (*Factory, error) {
 	}
 
 	// Get candidates
-	candidates := c.factories[key]
+	var candidates []*Factory
 
-	if len(candidates) == 0 && len(c.alias[key]) > 0 {
+	if len(p.factories) > 0 {
+		for f := range p.factories {
+			candidates = append(candidates, f)
+		}
+	} else if len(p.candidates) > 0 {
 		// has compatible alias
-		for otherKey := range c.alias[key] {
-			otherCandidates := c.factories[otherKey]
-			if len(otherCandidates) > 0 {
-				candidates = append(candidates, otherCandidates...)
-			}
+		for f := range p.candidates {
+			candidates = append(candidates, f)
 		}
 	}
 
@@ -615,7 +834,7 @@ func (c *container) getProvider(key reflect.Type) (*Factory, error) {
 	default:
 		// check for primary
 		for _, candidate := range candidates {
-			if candidate.primary {
+			if candidate.Primary() {
 				return candidate, nil
 			}
 		}

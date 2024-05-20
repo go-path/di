@@ -52,7 +52,7 @@ func (g *graph) edgesFrom(u int) []int {
 	var orders []int
 	p := g.nodes[u]
 	for _, paramKey := range p.parameterKeys {
-		if isContext(paramKey) {
+		if paramKey == _keyContext || paramKey == _keyContainer {
 			// ignore context
 			continue
 		}

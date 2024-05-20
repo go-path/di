@@ -2,7 +2,6 @@ package di
 
 import (
 	"reflect"
-	"strings"
 )
 
 // Qualified allows you to inject a dependency that has a qualifier
@@ -15,22 +14,31 @@ import (
 //		myService := sq.Get()
 //	})
 type Qualified[T any, Q any] struct {
-	value T
+	TypeBase[T]
+	value any
 }
 
+// Get the value
 func (q Qualified[T, Q]) Get() T {
-	return q.value
+	return q.value.(T)
 }
 
-func (q Qualified[T, Q]) Type() reflect.Type {
-	return Key[T]()
-}
+// Type get the type of component
+// func (q Qualified[T, Q]) Type() reflect.Type {
+// 	return Key[T]()
+// }
 
+// Qualifier get the qualifier type
 func (q Qualified[T, Q]) Qualifier() reflect.Type {
 	return Key[Q]()
 }
 
-// Qualify register a qualifier for the component
+// WithValue create a new instance of Qualified with the value
+func (q Qualified[T, Q]) With(value any) Qualified[T, Q] {
+	return Qualified[T, Q]{TypeBase: TypeBase[T]{}, value: value}
+}
+
+// Qualify register a qualifier for the component. Anyone can define a new qualifier.
 //
 // Example:
 //
@@ -38,74 +46,43 @@ func (q Qualified[T, Q]) Qualifier() reflect.Type {
 //
 //	di.Register(func() *MyService {
 //		return &MyService{}
-//	}, di.Qualify[MyQualifier]())
-func Qualify[Q any]() ComponentConfig {
+//	}, di.Qualify[testQualifier]())
+func Qualify[Q any]() FactoryConfig {
 	qualifier := Key[Q]()
 	return func(f *Factory) {
 		f.qualifiers[qualifier] = true
 	}
 }
 
-type MyQualifier string
+type PrimaryQualifier uint8
 
-func init() {
+var (
+	_primaryQualifierKey  = Key[PrimaryQualifier]()
+	_primaryQualifyConfig = Qualify[PrimaryQualifier]()
+)
 
-	// produzir um componente qualificado
-	global.Register(
-		func() *Factory {
-			return &Factory{}
-		},
-		Primary,
-		Qualify[MyQualifier](),
-	)
-
-	// usar uma dependencia que possui um qualificador
-	global.Register(func(f Qualified[*Factory, MyQualifier]) {
-		factory := f.Get()
-		print(factory.Primary())
-	})
-
-	// ConvertibleTo, Implements, AssignableTo
-
-	factoryType := reflect.TypeOf(xxx)
-	numParams := factoryType.NumIn()
-	for i := 0; i < numParams; i++ {
-		tin := factoryType.In(i)
-		if tin.Kind() == reflect.Struct && strings.HasPrefix(tin.String(), "di.Qualified[") {
-			var isValid bool
-			var getValue reflect.Method
-			var getQualifier reflect.Method
-
-			getValue, isValid = tin.MethodByName("Type")
-			if !isValid || getValue.Type.NumIn() != 1 || getValue.Type.NumOut() != 1 || !getValue.Type.Out(0).Implements(_typeReflectType) {
-				isValid = false
-			}
-
-			if isValid {
-				getQualifier, isValid = tin.MethodByName("Qualifier")
-				if !isValid || getQualifier.Type.NumIn() != 1 || getQualifier.Type.NumOut() != 1 || !getQualifier.Type.Out(0).Implements(_typeReflectType) {
-					isValid = false
-				}
-			}
-
-			if isValid {
-				nptr_vl := reflect.New(tin).Elem() // Value {di.Qualified[A, B]}
-
-				args := []reflect.Value{nptr_vl}
-
-				valueTypeResult := getValue.Func.Call(args)
-				valueType := valueTypeResult[0].Interface().(reflect.Type)
-
-				qualifierResult := getQualifier.Func.Call(args)
-				qualifierType := qualifierResult[0].Interface().(reflect.Type)
-
-				print(valueType.String())
-				print(qualifierType.String())
-			}
-		}
-	}
-}
-
-func xxx(f Qualified[*Factory, MyQualifier]) {
-
+// Primary indicates that a component should be given preference when
+// multiple candidates are qualified to inject a single-valued dependency.
+// If exactly one 'primary' component exists among the candidates, it
+// will be the injected value.
+//
+// Example:
+//
+//	di.Register(func(repository FooRepository) FooService {
+//		return &FooServiceImpl{ repository: repository }
+//	})
+//
+//	di.Register(func() FooRepository {
+//		return &MemoryRepositoryImpl{}
+//	})
+//
+//	di.Register(func() FooRepository {
+//		return &DatabaseRepositoryImpl{}
+//	}, di.Primary)
+//
+// Because DatabaseRepositoryImpl is marked with Primary, it will be
+// injected preferentially over the MemoryRepositoryImpl variant
+// assuming both are present as component within the same di container.
+func Primary(f *Factory) {
+	_primaryQualifyConfig(f)
 }

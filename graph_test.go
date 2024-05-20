@@ -62,14 +62,14 @@ func TestGraphIsAcyclic(t *testing.T) {
 		},
 	}
 	for _, tt := range testCases {
-		Clear()
-		g := &graph{}
+		c := New(nil).(*container)
+		g := c.graph
 		for _, pt := range tt {
 			p := &Factory{
 				parameterKeys: pt.params,
 			}
 			p.order = g.add(p)
-			providers[pt.key] = append(providers[pt.key], p)
+			c.factories[pt.key] = append(c.factories[pt.key], p)
 		}
 		ok, cycle := g.isAcyclic()
 		assert.True(t, ok, "expected acyclic, got cycle %v", cycle)
@@ -77,7 +77,6 @@ func TestGraphIsAcyclic(t *testing.T) {
 }
 
 func TestGraphIsCyclic(t *testing.T) {
-	c := New()
 	testCases := []struct {
 		providers []testProvider
 		cycle     []int
@@ -123,7 +122,7 @@ func TestGraphIsCyclic(t *testing.T) {
 		},
 	}
 	for _, tt := range testCases {
-		c.Clear()
+		c := New(nil)
 		cc := c.(*container)
 		g := cc.graph
 		for _, pt := range tt.providers {
@@ -131,8 +130,8 @@ func TestGraphIsCyclic(t *testing.T) {
 			p.order = g.add(p)
 			cc.factories[pt.key] = append(cc.factories[pt.key], p)
 		}
-		ok, c := g.isAcyclic()
+		ok, cycle := g.isAcyclic()
 		assert.False(t, ok)
-		assert.Equal(t, tt.cycle, c)
+		assert.Equal(t, tt.cycle, cycle)
 	}
 }

@@ -13,7 +13,7 @@ const (
 type ObjectFactory func() (any, DisposableAdapter, error)
 
 type ScopeI interface {
-	// GetObject return the object with the given key from the underlying scope,
+	// Get return the object with the given key from the underlying scope,
 	// creating it if not found in the underlying storage mechanism.
 	//
 	// If ObjectFactory returns a disposer, the scope need to register a callback to

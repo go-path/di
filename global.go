@@ -10,11 +10,11 @@ func Global() Container {
 	return global
 }
 
-func Register(ctor any, opts ...ComponentConfig) {
+func Register(ctor any, opts ...FactoryConfig) {
 	global.Register(ctor, opts...)
 }
 
-func ShouldRegister(ctor any, opts ...ComponentConfig) error {
+func ShouldRegister(ctor any, opts ...FactoryConfig) error {
 	return global.ShouldRegister(ctor, opts...)
 }
 

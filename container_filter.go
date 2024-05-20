@@ -30,7 +30,7 @@ func (f *FilteredFactories) Foreach(visitor func(f *Factory) (stop bool, err err
 	return nil
 }
 
-func (c *container) Filter(options ...ComponentConfig) *FilteredFactories {
+func (c *container) Filter(options ...FactoryConfig) *FilteredFactories {
 
 	filter := &Factory{}
 	for _, option := range options {
@@ -53,7 +53,7 @@ func (c *container) Filter(options ...ComponentConfig) *FilteredFactories {
 				continue
 			}
 
-			if filter.primary && !factory.primary {
+			if filter.Primary() && !factory.Primary() {
 				continue
 			}
 
@@ -82,10 +82,10 @@ func (c *container) Filter(options ...ComponentConfig) *FilteredFactories {
 		}
 	}
 
-	return &FilteredFactories{
+	return (&FilteredFactories{
 		container: c,
 		factories: factories,
-	}
+	}).Sort(FactorySortLessFn)
 }
 
 func FactorySortLessFn(a, b *Factory) bool {

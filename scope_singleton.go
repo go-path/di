@@ -8,7 +8,8 @@ import (
 
 func newSingletonScope() *scopeSingleton {
 	return &scopeSingleton{
-		objects: make(map[reflect.Type]any),
+		objects:   make(map[reflect.Type]any),
+		disposers: make(map[reflect.Type]DisposableAdapter),
 	}
 }
 
