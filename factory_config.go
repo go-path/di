@@ -82,13 +82,18 @@ func Scoped(scope string) FactoryConfig {
 func Startup(priority int) FactoryConfig {
 	return func(f *Factory) {
 		f.startup = true
-		f.startupPriority = priority
+		f.priority = priority
 	}
 }
 
 // Priority can be applied to any component to indicate in what order they should be used.
-// The effect of using the Priority in any particular instance is defined by other specifications.
-// Ex. A framework can implement filters and use priority to define the order of execution
+//
+// If the component is marked as Startup, the priority determines its execution order.
+//
+// Priority is also used during dependency injection. The candidate with the
+// highest priority will be injected.
+//
+// A framework can implement filters and use priority to define the order of execution
 func Priority(priority int) FactoryConfig {
 	return func(f *Factory) {
 		f.priority = priority

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -52,16 +53,6 @@ type Container interface {
 
 	// Mock test only, register a mock instance to the container
 	Mock(mock any) (cleanup func())
-
-	// TypeMatch check whether the component with the given type matches the specified type.
-	// More specifically, check whether a Get call for the given type would return an object
-	// that is assignable to the specified target type
-	// TypeMatch(key reflect.Type, typeToMatch Resolvable) (bool, error)
-	// GetFactory(key Resolvable, contexts ...context.Context) (*Factory, error)
-	// RunOnStartup(ctor any, priority int, opts ...ComponentOption)
-	// Instances(ctx context.Context, valid func(p *Factory) bool, less func(a, b *Factory) bool) (instances []any, err error)
-	// Foreach(visitor func(p *Factory) (stop bool, err error)) error
-	// AddContext(ctx context.Context) context.Context
 }
 
 type container struct {
@@ -413,32 +404,8 @@ func (c *container) parseParam(paramKey reflect.Type) *Parameter {
 					isProvider = false
 					qualifierResult := funcQualifier.Func.Call([]reflect.Value{nptr_vl})
 					qualifierType = qualifierResult[0].Interface().(reflect.Type)
-
-					// funcWithImpl = func(value any) reflect.Value {
-					// 	// func (q Provider[T]) With(supplier func() (any, error)) Provider[T]
-					// 	// func (q Qualified[T, Q]) With(value any) Qualified[T, Q]
-					// 	result := funcWith.Func.Call([]reflect.Value{nptr_vl, reflect.ValueOf(value)})
-					// 	return result[0]
-					// }
 				}
 			}
-
-			// args[i] = p.funcWithImpl(func() (any, error) {
-			// 	object, _, err := objectFactory()
-			// 	return object, err
-			// })
-			// return p.funcWithImpl(value)
-
-			// if isProvider {
-			// 	funcWithImpl = func(value any) reflect.Value {
-			// 		// func (q Provider[T]) With(supplier func() (any, error)) Provider[T]
-			// 		supplier := func() any {
-			// 			return value
-			// 		}
-			// 		result := funcWith.Func.Call([]reflect.Value{nptr_vl, reflect.ValueOf(supplier)})
-			// 		return result[0]
-			// 	}
-			// }
 
 			if isProvider || isQualified {
 				valueTypeResult := funcType.Func.Call([]reflect.Value{nptr_vl})
@@ -797,12 +764,6 @@ func (c *container) Contains(key reflect.Type) bool {
 
 func (c *container) getProvider(p *Parameter) (*Factory, error) {
 
-	// TypeMatch check whether the component with the given type matches the specified type.
-	// More specifically, check whether a Get call for the given type would return an object
-	// that is assignable to the specified target type
-	// TypeMatch(key reflect.Type, typeToMatch Resolvable) (bool, error)
-	// GetFactory(key Resolvable, contexts ...context.Context) (*Factory, error)
-
 	key := p.Key()
 
 	// see Mock
@@ -832,12 +793,35 @@ func (c *container) getProvider(p *Parameter) (*Factory, error) {
 	case 1:
 		return candidates[0], nil
 	default:
-		// check for primary
-		for _, candidate := range candidates {
-			if candidate.Primary() {
-				return candidate, nil
-			}
+		sort.Slice(candidates, func(i, j int) bool {
+			return DefaultFactorySortLessFn(candidates[i], candidates[j])
+		})
+
+		first := candidates[0]
+		second := candidates[1]
+
+		if first.Mock() {
+			// testing, expected controlled environment
+			return first, nil
 		}
+
+		if first.Primary() {
+			if first.Priority() > second.Priority() || !second.Primary() {
+				// If exactly one 'primary' component exists among the candidates, it
+				// will be the injected value.
+				return first, nil
+			}
+		} else if !first.Alternative() && second.Alternative() {
+			// If exactly one NON-ALTERNATIVE component exists among the candidates, it
+			// will be the injected value.
+			return first, nil
+		}
+
+		if first.Priority() > second.Priority() {
+			// The candidate with the highest priority will be injected.
+			return first, nil
+		}
+
 		return nil, errors.Join(fmt.Errorf("multiple candidates for type %v", key), ErrManyCandidates)
 	}
 }
@@ -860,7 +844,7 @@ func (c *container) DestroySingletons() error {
 	return nil
 }
 
-// Mock allows mocking of a dependency. Accepts "T" or "func([context.Context]) T"
+// Mock allows mocking of a dependency. Accepts "any", "func() any" or "func(context.Context) any"
 func (c *container) Mock(mock any) (cleanup func()) {
 	if !testing.Testing() {
 		panic("mocks are only allowed during testing")
@@ -902,97 +886,3 @@ func (c *container) Mock(mock any) (cleanup func()) {
 	}
 	return
 }
-
-// func (c *container) TypeMatch(key reflect.Type, typeToMatch Resolvable) (bool, error) {
-// 	return false, nil
-// }
-
-// func (c *container) GetFactory(key Resolvable, contexts ...context.Context) (*Factory, error) {
-// 	return nil, nil
-// }
-
-// func (c *container) RunOnStartup(ctor any, priority int, opts ...ComponentConfig) {
-// 	c.Register(ctor, append([]ComponentConfig{Startup(priority)}, opts...)...)
-// }
-
-// func (c *container) Instances(ctx context.Context, valid func(f *Factory) bool, less func(a, b *Factory) bool) (instances []any, err error) {
-
-// 	var factories []*Factory
-
-// 	for _, candidates := range c.factories {
-// 		for _, p := range candidates {
-// 			if valid(p) {
-// 				factories = append(factories, p)
-// 			}
-// 		}
-// 	}
-
-// 	if less == nil {
-// 		less = FactorySortLessFn
-// 	}
-
-// 	sort.Slice(factories, func(i, j int) bool {
-// 		return less(factories[i], factories[j])
-// 	})
-
-// 	for _, f := range factories {
-// 		if f.mock != nil {
-// 			instances = append(instances, f.mock(ctx))
-// 			continue
-// 		}
-
-// 		// @TODO: args
-// 		if instance, e := f.Create(nil); e != nil {
-// 			err = e
-// 			return
-// 		} else if instance != nil {
-// 			// return
-// 			instances = append(instances, instance)
-// 		}
-// 	}
-
-// 	return
-// }
-
-// func (c *container) Foreach(visitor func(f *Factory) (stop bool, err error)) error {
-// 	for _, candidates := range c.factories {
-// 		for _, p := range candidates {
-// 			stop, err2 := visitor(p)
-// 			if err2 != nil {
-// 				return err2
-// 			}
-// 			if stop {
-// 				return nil
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
-
-// func (c *container) Cleanup() {
-// 	c.contextStorages.Range(func(key, value any) bool {
-// 		c.contextStorages.Delete(key)
-// 		if s, ok := value.(*storage); ok {
-// 			s.cleanup()
-// 		}
-// 		return true
-// 	})
-// 	c.singletonStorage.cleanup()
-// }
-
-// func (c *container) AddContext(ctx context.Context) context.Context {
-// 	id := ctxSeq.Add(1)
-// 	ctx = context.WithValue(ctx, ctxKey, id)
-
-// 	s := &storage{}
-// 	c.contextStorages.Store(id, s)
-
-// 	go func() {
-// 		<-ctx.Done()
-// 		c.contextStorages.Delete(id)
-// 		s.cleanup()
-// 		s = nil
-// 	}()
-
-// 	return ctx
-// }

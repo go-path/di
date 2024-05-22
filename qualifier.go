@@ -55,10 +55,13 @@ func Qualify[Q any]() FactoryConfig {
 }
 
 type PrimaryQualifier uint8
+type AlternativeQualifier uint8
 
 var (
-	_primaryQualifierKey  = Key[PrimaryQualifier]()
-	_primaryQualifyConfig = Qualify[PrimaryQualifier]()
+	_primaryQualifierKey      = Key[PrimaryQualifier]()
+	_primaryQualifyConfig     = Qualify[PrimaryQualifier]()
+	_alternativeQualifierKey  = Key[AlternativeQualifier]()
+	_alternativeQualifyConfig = Qualify[AlternativeQualifier]()
 )
 
 // Primary indicates that a component should be given preference when
@@ -85,4 +88,31 @@ var (
 // assuming both are present as component within the same di container.
 func Primary(f *Factory) {
 	_primaryQualifyConfig(f)
+}
+
+// Alternative indicates that a component should NOT be given preference when
+// multiple candidates are qualified to inject a single-valued dependency.
+//
+// If exactly one NON-ALTERNATIVE component exists among the candidates, it
+// will be the injected value.
+//
+// Example:
+//
+//	di.Register(func(repository FooRepository) FooService {
+//		return &FooServiceImpl{ repository: repository }
+//	})
+//
+//	di.Register(func() FooRepository {
+//		return &MemoryRepositoryImpl{}
+//	})
+//
+//	di.Register(func() FooRepository {
+//		return &DatabaseRepositoryImpl{}
+//	}, di.Alternative)
+//
+// Because DatabaseRepositoryImpl is marked with Alternative, it will NOT be
+// injected over the MemoryRepositoryImpl variant
+// assuming both are present as component within the same di container.
+func Alternative(f *Factory) {
+	_alternativeQualifyConfig(f)
 }

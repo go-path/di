@@ -15,24 +15,23 @@ type ConditionFn func(Container, *Factory) bool
 // Factory is a node in the dependency graph that represents a constructor provided by the user
 // and the basic attributes of the returned component (if applicable)
 type Factory struct {
-	order           int                   // order of this node in graph
-	key             reflect.Type          // key for this factory
-	factoryType     reflect.Type          // type information about constructor
-	factoryValue    reflect.Value         // constructor function
-	returnType      reflect.Type          // type information about return type.
-	returnErrorIdx  int                   // error return index (-1, 0 or 1)
-	returnValueIdx  int                   // value return index (0 or 1)
-	parameters      []*Parameter          // information about factory parameters.
-	parameterKeys   []reflect.Type        // type information about factory parameters.
-	scope           string                // Factory scope
-	priority        int                   // priority of use
-	startup         bool                  // will be initialized with container
-	startupPriority int                   // priority of initialization
-	initializers    []reflect.Value       // post construct callbacks
-	disposers       []reflect.Value       // disposal functions
-	conditions      []ConditionFn         // indicates that a component is only eligible for registration when all specified conditions match.
-	qualifiers      map[reflect.Type]bool // component qualifiers
-	mock            mockFn
+	order          int                   // order of this node in graph
+	key            reflect.Type          // key for this factory
+	factoryType    reflect.Type          // type information about constructor
+	factoryValue   reflect.Value         // constructor function
+	returnType     reflect.Type          // type information about return type.
+	returnErrorIdx int                   // error return index (-1, 0 or 1)
+	returnValueIdx int                   // value return index (0 or 1)
+	parameters     []*Parameter          // information about factory parameters.
+	parameterKeys  []reflect.Type        // type information about factory parameters.
+	scope          string                // Factory scope
+	priority       int                   // priority of use
+	startup        bool                  // will be initialized with container
+	initializers   []reflect.Value       // post construct callbacks
+	disposers      []reflect.Value       // disposal functions
+	conditions     []ConditionFn         // indicates that a component is only eligible for registration when all specified conditions match.
+	qualifiers     map[reflect.Type]bool // component qualifiers
+	mock           mockFn
 }
 
 // Create a new instance of component.
@@ -63,6 +62,10 @@ func (f *Factory) Scope() string {
 
 func (f *Factory) Primary() bool {
 	return f.HasQualifier(_primaryQualifierKey)
+}
+
+func (f *Factory) Alternative() bool {
+	return f.HasQualifier(_alternativeQualifierKey)
 }
 
 func (f *Factory) Mock() bool {
@@ -105,10 +108,6 @@ func (f *Factory) Startup() bool {
 	return f.startup
 }
 
-func (f *Factory) StartupPriority() int {
-	return f.startupPriority
-}
-
 func (f *Factory) Priority() int {
 	return f.priority
 }
@@ -121,42 +120,3 @@ func (f *Factory) HasQualifier(q reflect.Type) bool {
 	}
 	return false
 }
-
-// func (f *Factory) Load(contexts ...context.Context) error {
-// 	_, err := f.container.Get(f.key, contexts...)
-// 	return err
-// }
-
-// func (f *Factory) Get(contexts ...context.Context) (any, error) {
-// 	return f.container.Get(f.key, contexts...)
-// }
-
-// Destruction
-
-// func (p *Factory) UseContext() bool {
-// 	return p.useContext
-// }
-
-// func (p *Factory) instantiate(contexts ...context.Context) (o any, e error) {
-// 	var ctx context.Context
-// 	if len(contexts) > 0 {
-// 		ctx = contexts[0]
-// 	} else {
-// 		ctx = context.Background()
-// 	}
-
-// 	if p.mock != nil {
-// 		o = p.mock(ctx)
-// 		return
-// 	}
-
-// 	return p.Create(ctx)
-// }
-
-// Parameter 2 of constructor in yanbin.blog.testweb.controllers.ManagementController required a bean of type 'yanbin.blog.testweb.service.CalcEngineFactory' that could not be found
-// org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type [in.amruth.xplore.utility.IUtil] found for dependency: expected at least 1 bean which qualifies as autowire candidate for this dependency. Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired(required=true)}
-// Field dependency in com.baeldung.springbootmvc.nosuchbeandefinitionexception.BeanA required a bean of type 'com.baeldung.springbootmvc.nosuchbeandefinitionexception.BeanB' that could not be found.
-// No qualifying bean of type
-//  [com.baeldung.packageB.IBeanB] is defined:
-//expected single matching bean but found 2: beanB1,beanB2
-// https://www.baeldung.com/spring-nosuchbeandefinitionexception

@@ -9,7 +9,7 @@ type FilteredFactories struct {
 
 func (f *FilteredFactories) Sort(less func(a, b *Factory) bool) *FilteredFactories {
 	if less == nil {
-		less = FactorySortLessFn
+		less = DefaultFactorySortLessFn
 	}
 
 	sort.Slice(f.factories, func(i, j int) bool {
@@ -85,22 +85,21 @@ func (c *container) Filter(options ...FactoryConfig) *FilteredFactories {
 	return (&FilteredFactories{
 		container: c,
 		factories: factories,
-	}).Sort(FactorySortLessFn)
+	}).Sort(DefaultFactorySortLessFn)
 }
 
-func FactorySortLessFn(a, b *Factory) bool {
-	if a.Primary() {
-		return true
-	} else if b.Primary() {
-		return false
-	}
-
+func DefaultFactorySortLessFn(a, b *Factory) bool {
 	if a.Mock() != b.Mock() {
-		return b.Mock()
+		// mock first (testing)
+		return a.Mock()
 	}
 
-	if a.Startup() && b.Startup() {
-		return a.StartupPriority() < b.StartupPriority()
+	if a.Primary() != b.Primary() {
+		return a.Primary()
+	}
+
+	if a.Alternative() != b.Alternative() {
+		return b.Alternative()
 	}
 
 	return a.Priority() < b.Priority()
