@@ -1,4 +1,4 @@
-module github.com/nidorx/di
+module github.com/go-path/di
 
 go 1.21
 

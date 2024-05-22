@@ -27,7 +27,7 @@ func Singleton(f *Factory) {
 	f.scope = SCOPE_SINGLETON
 }
 
-// Singleton identifies a component that a new instance is created
+// Prototype identifies a component that a new instance is created
 // every time the component factory is invoked.
 //
 // Example:
