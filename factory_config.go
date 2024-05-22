@@ -125,7 +125,7 @@ func Stereotype(options ...FactoryConfig) FactoryConfig {
 // Conditions are checked immediately before the component factory is due to be
 // registered and are free to veto registration based on any criteria
 // that can be determined at that point.
-func Condition(condition ConditionFn) FactoryConfig {
+func Condition(condition ConditionFunc) FactoryConfig {
 	return func(f *Factory) {
 		f.conditions = append(f.conditions, condition)
 	}

@@ -101,7 +101,7 @@ func TestEndToEndSuccess(t *testing.T) {
 
 		require.NoError(t, ctn.Initialize())
 
-		result, err = Get[testService](ctn)
+		result, err = GetFrom[testService](ctn)
 
 		require.NoError(t, err)
 		require.True(t, called, "constructor must be called first")

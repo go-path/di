@@ -2,8 +2,9 @@ package di
 
 import (
 	"context"
-	"reflect"
 )
+
+type DisposerFunc func(any)
 
 // Disposable interface to be implemented by components that want to release
 // resources on destruction
@@ -21,7 +22,11 @@ type Disposable interface {
 // See Disposable
 func Disposer[T any](disposer func(T)) FactoryConfig {
 	return func(f *Factory) {
-		f.disposers = append(f.disposers, reflect.ValueOf(disposer))
+		f.disposers = append(f.disposers, func(a any) {
+			if v, ok := a.(T); ok {
+				disposer(v)
+			}
+		})
 	}
 }
 
@@ -44,10 +49,9 @@ func (d *disposableAdapterImpl) Context() context.Context {
 }
 
 func (d *disposableAdapterImpl) Dispose() {
-	if d.factory.Disposer() {
-		args := []reflect.Value{reflect.ValueOf(d.obj)}
+	if d.factory.HasDisposers() {
 		for _, disposer := range d.factory.disposers {
-			disposer.Call(args)
+			disposer(d.obj)
 		}
 	}
 }

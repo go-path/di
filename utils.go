@@ -19,10 +19,6 @@ func isError(t reflect.Type) bool {
 	return t.Implements(_typeErr)
 }
 
-// func isContext(t reflect.Type) bool {
-// 	return t == _keyContext
-// }
-
 func getContext(contexts ...context.Context) context.Context {
 	if len(contexts) > 0 {
 		return contexts[0]
@@ -46,8 +42,9 @@ func KeyOf(t any) reflect.Type {
 	return reflect.TypeOf(t)
 }
 
-func Get[T any](ctn Container, contexts ...context.Context) (o T, e error) {
-	if v, err := ctn.Get(Key[T](), contexts...); err != nil {
+// GetFrom get a instance from container using generics (returns error)
+func GetFrom[T any](c Container, contexts ...context.Context) (o T, e error) {
+	if v, err := c.Get(Key[T](), contexts...); err != nil {
 		e = err
 	} else {
 		o = v.(T)
@@ -55,8 +52,9 @@ func Get[T any](ctn Container, contexts ...context.Context) (o T, e error) {
 	return
 }
 
-func MustGet[T any](ctn Container, contexts ...context.Context) T {
-	o, err := Get[T](ctn, contexts...)
+// MustGetFrom get a instance from container using generics (panic on error)
+func MustGetFrom[T any](c Container, ctx ...context.Context) T {
+	o, err := GetFrom[T](c, ctx...)
 	if err != nil {
 		panic(err)
 	}
@@ -65,8 +63,6 @@ func MustGet[T any](ctn Container, contexts ...context.Context) T {
 
 func AllOf[T any](c Container, ctx context.Context) (o []T, e error) {
 	key := Key[T]()
-	// t := reflect.TypeOf((*T)(nil)).Elem()
-
 	cond := Condition(func(c Container, f *Factory) bool {
 		return f.key == key || f.Type().AssignableTo(key)
 	})

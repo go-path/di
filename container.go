@@ -17,7 +17,7 @@ type ctxCurrentInCreationKeyType int // unexported type for ctxCurrentInCreation
 type Container interface {
 
 	// Initialize initialize all non-lazy singletons (startup)
-	Initialize(contexts ...context.Context) error
+	Initialize(ctx ...context.Context) error
 
 	// RegisterScope Register the given scope, backed by the given ScopeI implementation.
 	RegisterScope(name string, scope ScopeI) error
@@ -27,7 +27,7 @@ type Container interface {
 	ShouldRegister(ctor any, opts ...FactoryConfig) error
 
 	// Get return an instance, which may be shared or independent, of the specified component.
-	Get(key reflect.Type, contexts ...context.Context) (any, error)
+	Get(key reflect.Type, ctx ...context.Context) (any, error)
 
 	// Contains check if this container contains a component with the given key.
 	// Does not consider any hierarchy this container may participate in.
@@ -35,12 +35,12 @@ type Container interface {
 
 	Filter(options ...FactoryConfig) *FilteredFactories
 
-	GetObjectFactory(factory *Factory, managed bool, contexts ...context.Context) ObjectFactory
+	GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) ObjectFactory
 
-	GetObjectFactoryFor(key reflect.Type, managed bool, contexts ...context.Context) ObjectFactory
+	GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) ObjectFactory
 
 	// ResolveArgs returns an ordered list of values which may be passed directly to the Factory Create method
-	ResolveArgs(factory *Factory, contexts ...context.Context) ([]reflect.Value, error)
+	ResolveArgs(factory *Factory, ctx ...context.Context) ([]reflect.Value, error)
 
 	// Destroy this container
 	Destroy() error
@@ -66,7 +66,7 @@ type container struct {
 	factories      map[reflect.Type][]*Factory
 	singletons     *scopeSingleton
 	testingHasMock bool
-	testingMocks   map[reflect.Type]mockFn
+	testingMocks   map[reflect.Type]mockFunc
 }
 
 var (
@@ -94,7 +94,7 @@ func New(parent Container) Container {
 		factories:      make(map[reflect.Type][]*Factory),
 		singletons:     newSingletonScope(),
 		testingHasMock: false,
-		testingMocks:   make(map[reflect.Type]mockFn),
+		testingMocks:   make(map[reflect.Type]mockFunc),
 		knownParams:    make(map[reflect.Type]*Parameter),
 	}
 
@@ -276,7 +276,7 @@ func (c *container) ShouldRegister(funcOrRef any, options ...FactoryConfig) erro
 					d.Destroy()
 				}
 			}
-			factory.disposers = append(factory.disposers, reflect.ValueOf(disposer))
+			factory.disposers = append(factory.disposers, disposer)
 		}
 	}
 
@@ -590,7 +590,7 @@ func (c *container) createObject(factory *Factory, ctx context.Context, managed 
 
 		if out, err = factory.Create(args); err != nil {
 			return
-		} else if factory.Disposer() {
+		} else if factory.HasDisposers() {
 			// add the instance to the list of disposable components in this container
 			disposer = &disposableAdapterImpl{
 				obj:       out,
@@ -850,18 +850,18 @@ func (c *container) Mock(mock any) (cleanup func()) {
 		panic("mocks are only allowed during testing")
 	}
 
-	var fn mockFn
+	var fn mockFunc
 	var key reflect.Type
 
-	if tFn, isFn := mock.(func() any); isFn {
+	if tFunc, isFunc := mock.(func() any); isFunc {
 		key = reflect.PointerTo(reflect.TypeOf(mock).Out(0))
 		fn = func(ctx context.Context) any {
-			return tFn()
+			return tFunc()
 		}
-	} else if tFnCtx, isFnCtx := mock.(func(ctx context.Context) any); isFnCtx {
+	} else if tFuncCtx, isFuncCtx := mock.(func(ctx context.Context) any); isFuncCtx {
 		key = reflect.PointerTo(reflect.TypeOf(mock).Out(0))
 		fn = func(ctx context.Context) any {
-			return tFnCtx(ctx)
+			return tFuncCtx(ctx)
 		}
 	} else {
 		key = reflect.PointerTo(reflect.TypeOf(mock))

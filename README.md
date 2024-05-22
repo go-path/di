@@ -51,9 +51,9 @@ Essa implementação tem como objetivos principais ser:
 > 
 > Alguns conceitos aplicados nessa biblioteca podem conter Glúten e/ou inspirações nas implementações do [CDI Java](https://www.cdi-spec.org/) e [Spring IoC](https://docs.spring.io/spring-framework/reference/core/beans.html). 
 > 
-> E obviametne que também usamos [reflection](https://pkg.go.dev/reflect), o que para alguns desinformados pode ser fatal. Importante mencionar que sanitizamos bem as mãos antes de manusear qualquer `Type` ou `Value`.
+> E obviametne que essa implementação usa [reflect](https://pkg.go.dev/reflect), o que para alguns desinformados pode ser fatal. Importante mencionar que sanitizamos bem as mãos antes de manusear qualquer `Type` ou `Value`.
 >
-> Não nos responsabilizaremos se você se tornar um desenvolvedor produtivo após entrar em contato com algum pedaço do di
+> Não nos responsabilizamos se você se tornar um desenvolvedor produtivo após entrar em contato com algum pedaço dessa lib
 >
 > "Your path you must decide.” — Yoda
 ---
@@ -79,13 +79,9 @@ O diagrama abaixo apresenta de forma resumida o funcionamento desse container de
 
 ### Container
 
-> Dependency injection (DI) is a specialized form of IoC, whereby objects define their dependencies (that is, the other objects they work with) only through constructor arguments, arguments to a factory method, or properties that are set on the object instance after it is constructed or returned from a factory method. 
-> 
-> The IoC container then injects those dependencies when it creates the component. This process is fundamentally the inverse (hence the name, Inversion of Control) of the component itself controlling the instantiation or location of its dependencies by using direct construction of objects or a mechanism such as the Service Locator pattern.
-
 [`di.Container`](https://github.com/go-path/di/blob/main/container.go#L17) is owr IoC Container.
 
-Você pode instanciar quantos containers achar conveniente com o método `New(parent Container) Container`. Nós já registramos um container [global](https://github.com/go-path/di/blob/main/global.go) e expomos todos os métodos para simplificar o uso da biblioteca.
+Se necessário você pode instanciar novos containers com o método `New(parent Container) Container`. Nós já registramos um container [global](https://github.com/go-path/di/blob/main/global.go) e expomos todos os métodos para simplificar o uso da biblioteca.
 
 Geralmente você só precisa interarir com o método `di.Register(ctor any, opts ...FactoryConfig)` para registro de componentes e finalmente o método  `di.Initialize(contexts ...context.Context) error` para que o container possa incializar os componentes configurados com `Startup`.
 

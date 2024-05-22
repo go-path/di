@@ -55,6 +55,7 @@ func Qualify[Q any]() FactoryConfig {
 }
 
 type PrimaryQualifier uint8
+
 type AlternativeQualifier uint8
 
 var (

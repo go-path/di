@@ -5,18 +5,22 @@ import (
 	"reflect"
 )
 
-// nilReturn internal representation of a nil component instance, e. g. for a nil value returned from Factory
+// nilReturn internal representation of a daemon/service factory
+// e. g. for a nil value returned from Factory
 type nilReturn struct{}
 
-type mockFn func(ctx context.Context) any
+type mockFunc func(ctx context.Context) any
 
-type ConditionFn func(Container, *Factory) bool
+type ConditionFunc func(Container, *Factory) bool
 
 // Factory is a node in the dependency graph that represents a constructor provided by the user
 // and the basic attributes of the returned component (if applicable)
 type Factory struct {
 	order          int                   // order of this node in graph
 	key            reflect.Type          // key for this factory
+	scope          string                // Factory scope
+	startup        bool                  // will be initialized with container
+	priority       int                   // priority of use
 	factoryType    reflect.Type          // type information about constructor
 	factoryValue   reflect.Value         // constructor function
 	returnType     reflect.Type          // type information about return type.
@@ -24,14 +28,11 @@ type Factory struct {
 	returnValueIdx int                   // value return index (0 or 1)
 	parameters     []*Parameter          // information about factory parameters.
 	parameterKeys  []reflect.Type        // type information about factory parameters.
-	scope          string                // Factory scope
-	priority       int                   // priority of use
-	startup        bool                  // will be initialized with container
 	initializers   []reflect.Value       // post construct callbacks
-	disposers      []reflect.Value       // disposal functions
-	conditions     []ConditionFn         // indicates that a component is only eligible for registration when all specified conditions match.
+	disposers      []DisposerFunc        // disposal functions
+	conditions     []ConditionFunc       // indicates that a component is only eligible for registration when all specified conditions match.
 	qualifiers     map[reflect.Type]bool // component qualifiers
-	mock           mockFn
+	mock           mockFunc
 }
 
 // Create a new instance of component.
@@ -52,24 +53,34 @@ func (f *Factory) Create(args []reflect.Value) (any, error) {
 	return results[f.returnValueIdx].Interface(), nil
 }
 
-func (f *Factory) Singleton() bool {
-	return f.scope == SCOPE_SINGLETON
+// Key gets the factory component Key (Key = reflect.TypeOf(ComponentType))
+func (f *Factory) Key() reflect.Type {
+	return f.key
 }
 
+// Scope gets the scope name
 func (f *Factory) Scope() string {
 	return f.scope
 }
 
-func (f *Factory) Primary() bool {
-	return f.HasQualifier(_primaryQualifierKey)
+// Singleton returns true if the scope = 'singleton'
+func (f *Factory) Singleton() bool {
+	return f.scope == SCOPE_SINGLETON
 }
 
-func (f *Factory) Alternative() bool {
-	return f.HasQualifier(_alternativeQualifierKey)
+// Prototype returns true if the scope = 'prototype'
+func (f *Factory) Prototype() bool {
+	return f.scope == SCOPE_PROTOTYPE
 }
 
-func (f *Factory) Mock() bool {
-	return f.mock != nil
+// Startup returns true if this factory is configured to run during the container initialization
+func (f *Factory) Startup() bool {
+	return f.startup
+}
+
+// Priority gets the priority of this components
+func (f *Factory) Priority() int {
+	return f.priority
 }
 
 func (f *Factory) Constructor() reflect.Value {
@@ -100,18 +111,49 @@ func (f *Factory) ReturnValueIdx() int {
 	return f.returnValueIdx
 }
 
-func (f *Factory) Disposer() bool {
+// Disposers returns the list of disposer methods for this factory
+func (f *Factory) Disposers() []DisposerFunc {
+	return append([]DisposerFunc{}, f.disposers...)
+}
+
+// HasDisposers returns true if this factory has any disposer method
+func (f *Factory) HasDisposers() bool {
 	return len(f.disposers) > 0
 }
 
-func (f *Factory) Startup() bool {
-	return f.startup
+// Conditions returns the list of conditions methods for this factory
+// The component is only eligible for registration when all specified conditions match.
+func (f *Factory) Conditions() []ConditionFunc {
+	return append([]ConditionFunc{}, f.conditions...)
 }
 
-func (f *Factory) Priority() int {
-	return f.priority
+// HasConditions returns true if this factory has any condition method
+func (f *Factory) HasConditions() bool {
+	return len(f.conditions) > 0
 }
 
+// Primary returns true if this is a Primary candidate
+// for a component (has the qualifier PrimaryQualifier)
+func (f *Factory) Primary() bool {
+	return f.HasQualifier(_primaryQualifierKey)
+}
+
+// Alternative returns true if this is a Alternative candidate
+// for a component (has the qualifier AlternativeQualifier)
+func (f *Factory) Alternative() bool {
+	return f.HasQualifier(_alternativeQualifierKey)
+}
+
+// Qualifiers returns the list of qualifiers for this factory
+func (f *Factory) Qualifiers() []reflect.Type {
+	var o []reflect.Type
+	for qualifier := range f.qualifiers {
+		o = append(o, qualifier)
+	}
+	return o
+}
+
+// HasQualifier return true if this Factory has the specified qualifier
 func (f *Factory) HasQualifier(q reflect.Type) bool {
 	for qualifier := range f.qualifiers {
 		if qualifier == q {
@@ -119,4 +161,9 @@ func (f *Factory) HasQualifier(q reflect.Type) bool {
 		}
 	}
 	return false
+}
+
+// Mock returns true if this is a Mock factory (testing)
+func (f *Factory) Mock() bool {
+	return f.mock != nil
 }
