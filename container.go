@@ -35,9 +35,9 @@ type Container interface {
 
 	Filter(options ...FactoryConfig) *FilteredFactories
 
-	GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) ObjectFactory
+	GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) CreateObjectFunc
 
-	GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) ObjectFactory
+	GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) CreateObjectFunc
 
 	// ResolveArgs returns an ordered list of values which may be passed directly to the Factory Create method
 	ResolveArgs(factory *Factory, ctx ...context.Context) ([]reflect.Value, error)
@@ -258,26 +258,6 @@ func (c *container) ShouldRegister(funcOrRef any, options ...FactoryConfig) erro
 		parameterKeys:  paramsKeys,
 		scope:          SCOPE_SINGLETON,
 		qualifiers:     make(map[reflect.Type]bool),
-	}
-
-	if factory.ReturnsValue() {
-		if returnType.Implements(_typeInitializer) {
-			initializer := func(object any) {
-				if d, ok := object.(Initializable); ok {
-					d.Initialize()
-				}
-			}
-			factory.initializers = append(factory.initializers, reflect.ValueOf(initializer))
-		}
-
-		if returnType.Implements(_typeDisposable) {
-			disposer := func(object any) {
-				if d, ok := object.(Disposable); ok {
-					d.Destroy()
-				}
-			}
-			factory.disposers = append(factory.disposers, disposer)
-		}
 	}
 
 	for _, option := range options {
@@ -519,7 +499,7 @@ func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance
 	}
 
 	var factory *Factory
-	factory, e = c.getProvider(param)
+	factory, e = c.resolveFactory(param)
 	if e != nil {
 		return
 	}
@@ -529,30 +509,30 @@ func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance
 }
 
 // ObjectFactory get a factory for a managed component (by scope)
-func (c *container) GetObjectFactory(factory *Factory, managed bool, contexts ...context.Context) ObjectFactory {
+func (c *container) GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) CreateObjectFunc {
 	return func() (any, DisposableAdapter, error) {
-		return c.createObject(factory, getContext(contexts...), managed)
+		return c.createObject(factory, getContext(ctx...), managed)
 	}
 }
 
-func (c *container) GetObjectFactoryFor(key reflect.Type, managed bool, contexts ...context.Context) ObjectFactory {
+func (c *container) GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) CreateObjectFunc {
 
 	// Check if component exists in this container
 	if c.parent != nil && !c.Contains(key) {
 		// not found -> check parent.
-		return c.parent.GetObjectFactoryFor(key, managed, contexts...)
+		return c.parent.GetObjectFactoryFor(key, managed, ctx...)
 	}
 
 	param := c.GetParam(key)
 	var factory *Factory
-	factory, e := c.getProvider(param)
+	factory, e := c.resolveFactory(param)
 
 	return func() (any, DisposableAdapter, error) {
 		if e != nil {
 			return nil, nil, e
 		}
 
-		return c.createObject(factory, getContext(contexts...), managed)
+		return c.createObject(factory, getContext(ctx...), managed)
 	}
 }
 
@@ -575,23 +555,27 @@ func (c *container) createObject(factory *Factory, ctx context.Context, managed 
 
 	key := factory.key
 
-	objectFactory := func() (out any, disposer DisposableAdapter, err error) {
+	createObject := func() (out any, disposer DisposableAdapter, err error) {
 		defer func() {
-			if err == nil && factory.ReturnsValue() && len(factory.initializers) > 0 {
+			ctx = c.afterCreation(key, ctx)
+
+			if err == nil && factory.ReturnsValue() && out != nil {
 				// instance created - initializers/post construct
-				args := []reflect.Value{reflect.ValueOf(out)}
-				for _, callback := range factory.initializers {
-					callback.Call(args)
+				if i, ok := out.(Initializable); ok {
+					i.Initialize()
+				}
+				if len(factory.initializers) > 0 {
+					for _, callback := range factory.initializers {
+						callback(out)
+					}
 				}
 			}
-			ctx = c.afterCreation(key, ctx)
 		}()
 		ctx = c.beforeCreation(key, ctx)
 
 		if out, err = factory.Create(args); err != nil {
 			return
-		} else if factory.HasDisposers() {
-			// add the instance to the list of disposable components in this container
+		} else if out != nil {
 			disposer = &disposableAdapterImpl{
 				obj:       out,
 				factory:   factory,
@@ -620,9 +604,9 @@ func (c *container) createObject(factory *Factory, ctx context.Context, managed 
 		}
 
 		// create component instance
-		instance, e = scope.Get(ctx, key, objectFactory)
+		instance, e = scope.Get(ctx, key, factory, createObject)
 	} else {
-		instance, disposer, e = objectFactory()
+		instance, disposer, e = createObject()
 	}
 
 	return
@@ -762,7 +746,7 @@ func (c *container) Contains(key reflect.Type) bool {
 	return param.HasCandidates()
 }
 
-func (c *container) getProvider(p *Parameter) (*Factory, error) {
+func (c *container) resolveFactory(p *Parameter) (*Factory, error) {
 
 	key := p.Key()
 

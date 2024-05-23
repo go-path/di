@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-type DisposerFunc func(any)
+type Callback func(any)
 
 // Disposable interface to be implemented by components that want to release
 // resources on destruction
@@ -49,7 +49,10 @@ func (d *disposableAdapterImpl) Context() context.Context {
 }
 
 func (d *disposableAdapterImpl) Dispose() {
-	if d.factory.HasDisposers() {
+	if d, ok := d.obj.(Disposable); ok {
+		d.Destroy()
+	}
+	if len(d.factory.disposers) > 0 {
 		for _, disposer := range d.factory.disposers {
 			disposer(d.obj)
 		}

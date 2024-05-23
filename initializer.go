@@ -1,7 +1,5 @@
 package di
 
-import "reflect"
-
 // Initializable interface to be implemented by components that want to
 // initialize resources on creation
 //
@@ -16,8 +14,12 @@ type Initializable interface {
 // returns nil, the initializer will be ignored
 //
 // See Initializable
-func Initializer[T any](callback func(T)) FactoryConfig {
+func Initializer[T any](initializer func(T)) FactoryConfig {
 	return func(f *Factory) {
-		f.initializers = append(f.initializers, reflect.ValueOf(callback))
+		f.initializers = append(f.initializers, func(a any) {
+			if v, ok := a.(T); ok {
+				initializer(v)
+			}
+		})
 	}
 }

@@ -44,11 +44,11 @@ func Filter(options ...FactoryConfig) *FilteredFactories {
 	return global.Filter(options...)
 }
 
-func GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) ObjectFactory {
+func GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) CreateObjectFunc {
 	return global.GetObjectFactory(factory, managed, ctx...)
 }
 
-func GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) ObjectFactory {
+func GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) CreateObjectFunc {
 	return global.GetObjectFactoryFor(key, managed, ctx...)
 }
 

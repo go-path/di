@@ -28,8 +28,8 @@ type Factory struct {
 	returnValueIdx int                   // value return index (0 or 1)
 	parameters     []*Parameter          // information about factory parameters.
 	parameterKeys  []reflect.Type        // type information about factory parameters.
-	initializers   []reflect.Value       // post construct callbacks
-	disposers      []DisposerFunc        // disposal functions
+	initializers   []Callback            // post construct callbacks
+	disposers      []Callback            // disposal functions
 	conditions     []ConditionFunc       // indicates that a component is only eligible for registration when all specified conditions match.
 	qualifiers     map[reflect.Type]bool // component qualifiers
 	mock           mockFunc
@@ -112,8 +112,8 @@ func (f *Factory) ReturnValueIdx() int {
 }
 
 // Disposers returns the list of disposer methods for this factory
-func (f *Factory) Disposers() []DisposerFunc {
-	return append([]DisposerFunc{}, f.disposers...)
+func (f *Factory) Disposers() []Callback {
+	return append([]Callback{}, f.disposers...)
 }
 
 // HasDisposers returns true if this factory has any disposer method

@@ -1,199 +1,199 @@
 package di
 
 import (
-	"reflect"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-type testQualifier string
+type testQualifierA uint8
+type testQualifierB uint8
 
-type testService interface {
-	Exec()
+type testServiceBase interface {
 	Name() string
-}
-type testService1 interface {
-	Exec()
+	Event(event string)
 }
 
-type testService2 interface {
-	Exec()
+type testServiceA interface {
+	testServiceBase
+	IsA()
 }
 
-type testService3 interface {
-	Exec()
+type testServiceB interface {
+	testServiceBase
+	IsB()
 }
 
-type testService4 interface {
-	Exec()
+type testLoggger func(name, event string)
+
+func newTestLogger() (logger testLoggger, logs func() []string) {
+	var entries []string
+
+	logger = func(name, event string) {
+		entries = append(entries, name+":"+event)
+	}
+
+	logs = func() []string {
+		return entries
+	}
+
+	return
 }
 
-type testService5 interface {
-	Exec()
+type testServiceBaseImp struct {
+	name   string
+	logger testLoggger
 }
 
-type testServiceImpl struct {
-	name     string
-	callback func(s testService, event string)
-}
+func (s *testServiceBaseImp) Name() string { return s.name }
 
-func (s *testServiceImpl) Name() string {
-	return s.name
-}
-
-func (s *testServiceImpl) Exec() {
-	if s.callback != nil {
-		s.callback(s, "exec")
+func (s *testServiceBaseImp) Event(event string) {
+	if s.logger != nil {
+		s.logger(s.name, event)
 	}
 }
 
-func (s *testServiceImpl) Initialize() {
-	if s.callback != nil {
-		s.callback(s, "Initialize")
-	}
+func (s *testServiceBaseImp) Initialize() {
+	s.Event("Initialize")
 }
 
-func (s *testServiceImpl) Destroy() {
-	if s.callback != nil {
-		s.callback(s, "Destroy")
-	}
+func (s *testServiceBaseImp) Destroy() {
+	s.Event("Destroy")
 }
 
-var (
-	t0 = reflect.TypeOf((*testService)(nil))  // 0
-	t1 = reflect.TypeOf((*testService1)(nil)) // 1
-	t2 = reflect.TypeOf((*testService2)(nil)) // 2
-	t3 = reflect.TypeOf((*testService3)(nil)) // 3
-	t4 = reflect.TypeOf((*testService4)(nil)) // 4
-	t5 = reflect.TypeOf((*testService5)(nil)) // 5
-)
+type testServiceAImpl struct{ *testServiceBaseImp }
 
-type testProvider struct {
-	key    reflect.Type
-	params []reflect.Type
+func (s *testServiceAImpl) IsA() {}
+
+type testServiceBImpl struct{ *testServiceBaseImp }
+
+func (s *testServiceBImpl) IsB() {}
+
+func newTestServiceA(name string, logger testLoggger) testServiceA {
+	return &testServiceAImpl{&testServiceBaseImp{name: name, logger: logger}}
 }
 
-func testParams(types ...reflect.Type) []reflect.Type {
-	params := make([]reflect.Type, 0, len(types))
-	params = append(params, types...)
-	return params
+func newTestServiceB(name string, logger testLoggger) testServiceB {
+	return &testServiceBImpl{&testServiceBaseImp{name: name, logger: logger}}
 }
 
-func TestEndToEndSuccess(t *testing.T) {
-	t.Run("func constructor", func(t *testing.T) {
+func TestComponentKey(t *testing.T) {
 
-		ctn := New(nil)
+	ctn := New(nil)
+	logger, logs := newTestLogger()
 
-		var (
-			err     error
-			called  bool
-			result  testService
-			service = &testServiceImpl{}
-		)
-
-		require.NoError(t, ctn.ShouldRegister(func() testService {
-			require.False(t, called, "constructor must be called exactly once")
-			called = true
-			return service
-		}))
-
-		require.NoError(t, ctn.Initialize())
-
-		result, err = GetFrom[testService](ctn)
-
-		require.NoError(t, err)
-		require.True(t, called, "constructor must be called first")
-		require.NotNil(t, result, "invoke got nil service")
-		require.Equal(t, service, result, "service must match constructor's return value")
+	// Component Type = Key = typeof testServiceA
+	ctn.Register(func() testServiceA {
+		return newTestServiceA("a", logger)
 	})
+
+	// Component Type = Key = typeof *testServiceBImpl
+	ctn.Register(func() *testServiceBImpl {
+		return newTestServiceB("b", logger).(*testServiceBImpl)
+	})
+
+	// a Key = typeof testServiceA, exact match
+	// b Key = typeof testServiceB, assignable match
+	// c Key = typeof *testServiceBImpl, exact match
+	ctn.Register(func(a testServiceA, b testServiceB, c *testServiceBImpl) {
+		require.True(t, b == c, "b testServiceB != d *testServiceBImpl")
+	}, Startup(100))
+
+	// missing dependencies
+	// func(di.testServiceA, di.testServiceB, *di.testServiceAImpl, *di.testServiceBImpl) depends on missing dependency
+	// missing dependencies: *di.testServiceAImpl
+
+	require.NoError(t, ctn.Initialize())
+
+	require.Equal(t, []string{
+		"a:Initialize",
+		"b:Initialize",
+	}, logs())
+}
+
+func TestConstructor(t *testing.T) {
+	ctn := New(nil)
+
+	var (
+		err     error
+		called  bool
+		result  testServiceA
+		service = newTestServiceA("test", nil)
+	)
+
+	require.NoError(t, ctn.ShouldRegister(func() testServiceA {
+		require.False(t, called, "constructor must be called exactly once")
+		called = true
+		return service
+	}))
+
+	require.NoError(t, ctn.Initialize())
+
+	result, err = GetFrom[testServiceA](ctn)
+
+	require.NoError(t, err)
+	require.True(t, called, "constructor must be called first")
+	require.NotNil(t, result, "invoke got nil service")
+	require.Equal(t, service, result, "service must match constructor's return value")
 }
 
 func TestFullCycle(t *testing.T) {
-	t.Run("func constructor", func(t *testing.T) {
+	ctn := New(nil)
+	logger, logs := newTestLogger()
 
-		ctn := New(nil)
+	count := 0
 
-		var events []string
+	// qualified component
+	ctn.Register(
+		func() testServiceA {
+			count++
+			return newTestServiceA("srv-"+strconv.Itoa(count), logger)
+		},
+		Primary,
+		Qualify[testQualifierA](),
+		Initializer(func(s testServiceA) {
+			s.Event("Initializer()")
+		}),
+		Disposer(func(s testServiceA) {
+			s.Event("Disposer()")
+		}),
+	)
 
-		appendEvent := func(s testService, event string) {
-			events = append(events, s.Name()+":"+event)
-		}
+	// Qualified
+	require.NoError(t, ctn.ShouldRegister(func(q Qualified[testServiceA, testQualifierA]) {
+		s := q.Get()
+		s.Event("Qualified") // expect "srv-1"
+	}, Startup(100)))
 
-		count := 0
+	// Provider (same instance)
+	require.NoError(t, ctn.ShouldRegister(func(q Provider[testServiceA]) {
+		s, _ := q.Get()
+		s.Event("Provided") // expect "srv-1"
 
-		// qualified component
-		ctn.Register(
-			func() testService {
-				count++
-				return &testServiceImpl{
-					name:     "srv-" + strconv.Itoa(count),
-					callback: appendEvent,
-				}
-			},
-			Primary,
-			Qualify[testQualifier](),
-			Initializer(func(s testService) {
-				appendEvent(s, "Initializer()")
-			}),
-			Disposer(func(s testService) {
-				appendEvent(s, "Disposer()")
-			}),
-		)
+		s, _ = q.Get()
+		s.Event("Provided") // expect "srv-1"
+	}, Startup(200)))
 
-		// Qualified
-		require.NoError(t, ctn.ShouldRegister(func(q Qualified[testService, testQualifier]) {
-			s := q.Get()
-			appendEvent(s, "Qualified") // expect "srv-1"
-		}, Startup(100)))
+	// Unmanaged (returns new instance)
+	require.NoError(t, ctn.ShouldRegister(func(u Unmanaged[testServiceA]) {
+		sa, da, _ := u.Get()
+		sa.Event("Unmanaged") // expect "srv-2"
 
-		// Provider (same instance)
-		require.NoError(t, ctn.ShouldRegister(func(q Provider[testService]) {
-			s, _ := q.Get()
-			appendEvent(s, "Provided") // expect "srv-1"
+		sb, db, _ := u.Get()
+		sb.Event("Unmanaged") // expect "srv-3"
 
-			s, _ = q.Get()
-			appendEvent(s, "Provided") // expect "srv-1"
-		}, Startup(200)))
+		da.Dispose()
+		db.Dispose()
+	}, Startup(300)))
 
-		// Unmanaged (returns new instance)
-		require.NoError(t, ctn.ShouldRegister(func(u Unmanaged[testService]) {
-			sa, da, _ := u.Get()
-			appendEvent(sa, "Unmanaged") // expect "srv-2"
+	require.NoError(t, ctn.Initialize())
 
-			sb, db, _ := u.Get()
-			appendEvent(sb, "Unmanaged") // expect "srv-3"
-
-			da.Dispose()
-			db.Dispose()
-		}, Startup(300)))
-
-		require.NoError(t, ctn.Initialize())
-
-		require.Equal(t, []string{
-			"srv-1:Initializer()", "srv-1:Qualified", "srv-1:Provided", "srv-1:Provided",
-			"srv-2:Initializer()", "srv-2:Unmanaged",
-			"srv-3:Initializer()", "srv-3:Unmanaged",
-			"srv-2:Disposer()",
-			"srv-3:Disposer()",
-		}, events)
-	})
+	require.Equal(t, []string{
+		"srv-1:Initialize", "srv-1:Initializer()", "srv-1:Qualified", "srv-1:Provided", "srv-1:Provided",
+		"srv-2:Initialize", "srv-2:Initializer()", "srv-2:Unmanaged",
+		"srv-3:Initialize", "srv-3:Initializer()", "srv-3:Unmanaged",
+		"srv-2:Destroy", "srv-2:Disposer()",
+		"srv-3:Destroy", "srv-3:Disposer()",
+	}, logs())
 }
-
-//type aServiceImpl struct {
-//}
-//
-//func (a *aServiceImpl) doSomething() {
-//
-//}
-
-//func TestRegister(t *testing.T) {
-//
-//	var GetServiceA func() testService0
-//
-//	Register()
-//	GetServiceA = Register(func() testService0 {
-//		return &aServiceImpl{}
-//	})
-//}

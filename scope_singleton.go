@@ -20,16 +20,12 @@ type scopeSingleton struct {
 	disposers map[reflect.Type]DisposableAdapter // Cache of disposers
 }
 
-func (s *scopeSingleton) Get(ctx context.Context, key reflect.Type, factory ObjectFactory) (any, error) {
-	if singleton := s.getSingleton(key); singleton != nil {
+func (s *scopeSingleton) Get(ctx context.Context, key reflect.Type, factory *Factory, createObject CreateObjectFunc) (any, error) {
+	if singleton, exist := s.objects[key]; exist {
 		return singleton, nil
 	}
 
-	// if singleton, exist := s.objects[key]; exist {
-	// 	return singleton, nil
-	// }
-
-	if singleton, disposer, err := factory(); err != nil {
+	if singleton, disposer, err := createObject(); err != nil {
 		return nil, err
 	} else {
 

@@ -2,7 +2,6 @@
 
 This is The Way to do Dependency injection in Go.
 
-
 ```go
 
 import "github.com/go-path/di"
@@ -39,35 +38,34 @@ di.Register(&yodaServiceImp{})
 di.Initialize() 
 ```
 
-Essa implementação tem como objetivos principais ser:
+This implementation has the following main objectives:
 
-- de fácil entendimento
-- Typesafe, fazendo uso ge generics
-- extensível e configurável
-- base para o desenvolvimento de frameworks e estruturas arquiteturais mais complexas.
+- Easy to understand
+- Typesafe, using generics
+- Extensible and configurable
+- A foundation for the development of more complex frameworks and architectural structures.
 
 ---
-> VOCÊ É ALÉRGICO? ATENÇÃO!
+> ARE YOU ALLERGIC? ATTENTION!
 > 
-> Alguns conceitos aplicados nessa biblioteca podem conter Glúten e/ou inspirações nas implementações do [CDI Java](https://www.cdi-spec.org/) e [Spring IoC](https://docs.spring.io/spring-framework/reference/core/beans.html). 
+> Some concepts applied in this library may contain gluten and/or be inspired by the implementations of [CDI Java](https://www.cdi-spec.org/) and [Spring IoC](https://docs.spring.io/spring-framework/reference/core/beans.html).
 > 
-> E obviametne que essa implementação usa [reflect](https://pkg.go.dev/reflect), o que para alguns desinformados pode ser fatal. Importante mencionar que sanitizamos bem as mãos antes de manusear qualquer `Type` ou `Value`.
+> And obviously, this implementation uses [reflection](https://pkg.go.dev/reflect), which for some uninformed individuals can be detrimental. It is important to mention that we thoroughly sanitize our hands before handling any `Type` or `Value`.
 >
-> Não nos responsabilizamos se você se tornar um desenvolvedor produtivo após entrar em contato com algum pedaço dessa lib
+> We will not be held responsible if you become a productive developer after coming into contact with any part of this library.
 >
 > "Your path you must decide.” — Yoda
 ---
 
 
-**Não sabe o que é DI?** [Wikipedia](https://en.wikipedia.org/wiki/Dependency_injection)
+**Don't know what DI is?** [Wikipedia](https://en.wikipedia.org/wiki/Dependency_injection)
 
+The diagram below provides a summarized overview of how this DI container functions.
 
-O diagrama abaixo apresenta de forma resumida o funcionamento desse container de DI.
-
-* **Container**: A implementação atual que permite ao desenvolvedor registrar e obter seus componentes.
-* **Component**: Qualquer objeto (simples ou complexo) que o desenvolvedor deseja registrar no container para que possa ser utilizado por outros componentes (injetado). Durante a injeção da dependencia o construtor injetado não sabe como o componente requisitado será criado. o Container resolve a dependencia simplificando o desenvolvimento de sistemas complexos.
-* **Factory**: Informa como uma instancia de um componente pode ser criado. O desenvolvedor registra no container um construtor de componente ou mesmo uma instancia e o Container faz o processamento necessário para gerar a Fábrica desse componente e resolver suas dependencias quando o construtor for invocado. É possível ter mais de um Factory para o mesmo tipo de componente. O Container certifica de obter a instancia correta conforme as regras descritas mais abaixo no corpo desse documento.
-* **Scope**: Gerencia o ciclo de vida de uma instancia. O desenvolvedor especifica o escopo do componente durante o registro. Quando o componente é requerido, o Container solicita a instancia ao Scope definido. O Scope pode retornar uma instancia existente ou criar uma nova. Isso permite a instanciação de componentes com ciclo de vida diversos, por exemplo, instancias que serão descartadas ao final de um requisição web e outras instancias Singleton que ficaram vivas até que toda a aplicação seja finalizada.
+* **Container**: The current implementation allows the developer to register and obtain their components.
+* **Component**: Any object (simple or complex) that the developer wishes to register in the container to be used by other (injected) components. During dependency injection, the injected constructor does not know how the requested component will be created. The container resolves the dependency, simplifying the development of complex systems.
+* **Factory**: It informs how an instance of a component can be created. The developer registers a component constructor or even an instance in the container, and the container performs the necessary processing to generate the factory for that component and resolve its dependencies when the constructor is invoked. It is possible to have more than one factory for the same type of component. The container ensures that the correct instance is obtained according to the rules described later in this document.
+* **Scope**: It manages the lifecycle of an instance. The developer specifies the scope of the component during registration. When the component is requested, the container asks the defined scope for the instance. The scope can return an existing instance or create a new one. This allows for the instantiation of components with various lifecycles; for example, instances that will be discarded at the end of a web request and other singleton instances that will remain alive until the entire application is terminated.
 
 ![Diagram 1](docs/diagram-1.png)
 
@@ -81,25 +79,25 @@ O diagrama abaixo apresenta de forma resumida o funcionamento desse container de
 
 [`di.Container`](https://github.com/go-path/di/blob/main/container.go#L17) is owr IoC Container.
 
-Se necessário você pode instanciar novos containers com o método `New(parent Container) Container`. Nós já registramos um container [global](https://github.com/go-path/di/blob/main/global.go) e expomos todos os métodos para simplificar o uso da biblioteca.
+If necessary, you can instantiate new containers using the method `New(parent Container) Container`. We've already registered a [global](https://github.com/go-path/di/blob/main/global.go) container and exposed all methods to simplify the library's usage.
 
-Geralmente você só precisa interarir com o método `di.Register(ctor any, opts ...FactoryConfig)` para registro de componentes e finalmente o método  `di.Initialize(contexts ...context.Context) error` para que o container possa incializar os componentes configurados com `Startup`.
+Usually, you only need to interact with the method `di.Register(ctor any, opts ...FactoryConfig)` for component registration and finally the method `di.Initialize(contexts ...context.Context) error` for the container to initialize the components configured as 'Startup'.
 
-Quando estiver fazendo testes unitários no seu projeto, dê uma olhada no método `Mock(mock any) (cleanup func())`.
+When conducting unit tests in your project, take a look at method `Mock(mock any) (cleanup func())`.
 
-Se você está construindo uma arquitetura mais complexa na sua organização ou alguma biblioteca com suporte a di, você provavelmente vai utilizar os métodos abaixo e outros que estão documentados na api para ter total controle sobre os Componentes.
+If you're building a more complex architecture in your organization or a library with DI support, you'll likely use the methods below and others documented in the API to have full control over the components.
 
 ```
 RegisterScope(name string, scope ScopeI) error
 
-Get(key reflect.Type, contexts ...context.Context) (any, error)
+Get(key reflect.Type, ctx ...context.Context) (any, error)
 Filter(options ...FactoryConfig) *FilteredFactories
 
 Contains(key reflect.Type) bool
 
-GetObjectFactory(factory *Factory, managed bool, contexts ...context.Context) ObjectFactory
-GetObjectFactoryFor(key reflect.Type, managed bool, contexts ...context.Context) ObjectFactory
-ResolveArgs(factory *Factory, contexts ...context.Context) ([]reflect.Value, error)
+GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) CreateObjectFunc
+GetObjectFactoryFor(key reflect.Type, managed bool, ctx ...context.Context) CreateObjectFunc
+ResolveArgs(factory *Factory, ctx ...context.Context) ([]reflect.Value, error)
 Destroy() error
 
 DestroyObject(key reflect.Type, object any) error
@@ -156,7 +154,7 @@ O container aplica a seguintes regras de priorização para determinar as fábri
 2. Os componentes registrados em que a dependecia solicitada é assignable com tipo do componente registrado (see [Type.AssignableTo](https://pkg.go.dev/reflect#Type.AssignableTo), [Go Assignability](https://go.dev/ref/spec#Assignability))
 
 
-Exemplo
+Exemplo de declaraçao e uso de dependencia válida. Perceba que registramos o componente do tipo `typeof *dependencyBImpl`. Este componente é assignable com `b DependencyB` e `c *dependencyBImpl`.
 ```go
 type DependencyA interface { DoIt() }
 type DependencyB interface { DoItBetter() }
@@ -170,15 +168,36 @@ di.Register(func() DependencyA { return &dependencyAImpl{} })
 // Component Type = Key = typeof *dependencyBImpl
 di.Register(func() dependencyBImpl { return &dependencyBImpl{} })
 
-// a Key = typeof DependencyA, exact match (registered before)
-// b Key = typeof DependencyB, assignable match (typeof *dependencyBImpl)
-// c Key = typeof *dependencyAImpl, assignable match (typeof DependencyA)
-// d Key = typeof *dependencyBImpl, exact match (registered before)
-di.Register(func(a DependencyA, b DependencyB, c *dependencyAImpl, d *dependencyBImpl) {
-    // a == c
-    // b == d
+// a Key = typeof DependencyA, exact match (di.Register)
+// b Key = typeof DependencyB, assignable match ('*testServiceBImpl' is a candidate for 'testServiceB')
+// c Key = typeof *dependencyBImpl, exact match (di.Register)
+di.Register(func(a DependencyA, b DependencyB, c *dependencyBImpl) {    
+    // b == c
 })
 ```
+
+Já abaixo temos um exemplo inválido de dependencia, resultado no erro `missing dependencies`.
+
+```go
+type DependencyA interface { DoIt() }
+
+type dependencyAImpl struct { /*...implements_A_DoIt()...*/ }
+func (* dependencyAImpl) DoAnotherThing() {}
+
+type dependencyAImpl2 struct { /*...implements_A_DoIt()...*/ }
+
+// Component Type = Key = typeof DependencyA
+di.Register(func() DependencyA { return &dependencyAImpl2{} })
+
+// d Key = typeof *dependencyAImpl
+di.Register(func(d *dependencyAImpl) {    
+   
+})
+```
+
+Veja que apesar de termos declarado a existencia do componente do tipo `DependencyA`, e existir uma fábrica que retorna uma instancia que o tipo é assignable (`d *dependencyAImpl2`), o container não consegue saber, antes de invocar o construtor, se o tipo retornado é compatível, e neste caso não é. A nossa dependencia (`d *dependencyAImpl`) é assignable de `DependencyA`, mas também implementa outro método e poderia ser assignable de outros componentes que podem não ser satisfeito pelo contrutor existente.
+
+Portanto, é importante que a dependencias sejam declaradas preferencialmente utilizando a interface do tipo, e não a implementação (SOLID - DIP).
 
 ## Factory Configurations
 
