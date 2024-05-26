@@ -67,10 +67,14 @@ func AllOf[T any](c Container, ctx context.Context) (o []T, e error) {
 		return f.key == key || f.Type().AssignableTo(key)
 	})
 
+	return AllOfFilter[T](c.Filter(cond), ctx)
+}
+
+func AllOfFilter[T any](filter *FilteredFactories, ctx context.Context) (o []T, e error) {
 	var objects []T
 
-	err := c.Filter(cond).Foreach(func(f *Factory) (bool, error) {
-		if obj, disposer, err := c.GetObjectFactory(f, true, ctx)(); err != nil {
+	err := filter.Foreach(func(f *Factory) (bool, error) {
+		if obj, disposer, err := filter.container.GetObjectFactory(f, true, ctx)(); err != nil {
 			return true, err
 		} else if o, ok := obj.(T); ok {
 			objects = append(objects, o)

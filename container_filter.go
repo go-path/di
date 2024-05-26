@@ -1,6 +1,10 @@
 package di
 
-import "sort"
+import (
+	"context"
+	"reflect"
+	"sort"
+)
 
 type FilteredFactories struct {
 	container Container
@@ -30,9 +34,26 @@ func (f *FilteredFactories) Foreach(visitor func(f *Factory) (stop bool, err err
 	return nil
 }
 
+func (f *FilteredFactories) Instances(ctx context.Context) ([]any, error) {
+	var objects []any
+
+	err := f.Foreach(func(factory *Factory) (bool, error) {
+		if obj, _, err := f.container.GetObjectFactory(factory, true, ctx)(); err != nil {
+			return true, err
+		} else if obj != nil {
+			objects = append(objects, obj)
+		}
+		return false, nil
+	})
+
+	return objects, err
+}
+
 func (c *container) Filter(options ...FactoryConfig) *FilteredFactories {
 
-	filter := &Factory{}
+	filter := &Factory{
+		qualifiers: make(map[reflect.Type]bool),
+	}
 	for _, option := range options {
 		option(filter)
 	}

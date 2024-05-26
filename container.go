@@ -33,6 +33,8 @@ type Container interface {
 	// Does not consider any hierarchy this container may participate in.
 	Contains(key reflect.Type) bool
 
+	ContainsRecursive(key reflect.Type) bool
+
 	Filter(options ...FactoryConfig) *FilteredFactories
 
 	GetObjectFactory(factory *Factory, managed bool, ctx ...context.Context) CreateObjectFunc
@@ -687,6 +689,11 @@ func (c *container) checkMissingDependencies(f *Factory) error {
 				}
 			}
 
+			// Check if component exists in this container
+			if c.parent != nil && c.parent.ContainsRecursive(paramKey) {
+				continue
+			}
+
 			missingDeps = append(missingDeps, fmt.Sprintf("%v", paramKey))
 		}
 	}
@@ -744,6 +751,28 @@ func (c *container) Contains(key reflect.Type) bool {
 
 	param := c.GetParam(key)
 	return param.HasCandidates()
+}
+
+func (c *container) ContainsRecursive(key reflect.Type) bool {
+	if key == _keyContext || key == _keyContainer {
+		// ignore context.Context and Container
+		return true
+	}
+
+	if c.testingHasMock {
+		if _, ok := c.testingMocks[key]; ok {
+			return true
+		}
+	}
+
+	if c.GetParam(key).HasCandidates() {
+		return true
+	}
+
+	if c.parent != nil {
+		return c.parent.ContainsRecursive(key)
+	}
+	return false
 }
 
 func (c *container) resolveFactory(p *Parameter) (*Factory, error) {
