@@ -79,24 +79,33 @@ func Scoped(scope string) FactoryConfig {
 //	di.Register(func()  {
 //		print("First")
 //	}, Startup(100))
-func Startup(priority int) FactoryConfig {
+func Startup(order int) FactoryConfig {
 	return func(f *Factory) {
+		f.order = order
 		f.startup = true
-		f.priority = priority
 	}
 }
 
-// Priority can be applied to any component to indicate in what order they should be used.
+// Order can be applied to any component to indicate in what order they
+// should be used.
 //
-// If the component is marked as Startup, the priority determines its execution order.
+// Higher values are interpreted as lower priority. As a consequence,
+// the object with the lowest value has the highest priority.
 //
-// Priority is also used during dependency injection. The candidate with the
-// highest priority will be injected.
+// Same order values will result in arbitrary sort positions for the
+// affected objects.
 //
-// A framework can implement filters and use priority to define the order of execution
-func Priority(priority int) FactoryConfig {
+// If the component is marked as Startup, the order determines its
+// execution order.
+//
+// Order is also used during dependency injection. The candidate with the
+// lower order will be injected.
+//
+// A framework can implement filters and use order to define the order
+// of execution
+func Order(order int) FactoryConfig {
 	return func(f *Factory) {
-		f.priority = priority
+		f.order = order
 	}
 }
 

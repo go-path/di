@@ -1,3 +1,4 @@
+// Exports the methods of a global instance to simplify the use of the lib
 package di
 
 import (
@@ -38,6 +39,10 @@ func Get[T any](ctx ...context.Context) (o T, e error) {
 // Does not consider any hierarchy this container may participate in.
 func Contains(key reflect.Type) bool {
 	return global.Contains(key)
+}
+
+func ContainsRecursive(key reflect.Type) bool {
+	return global.ContainsRecursive(key)
 }
 
 func Filter(options ...FactoryConfig) *FilteredFactories {

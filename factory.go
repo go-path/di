@@ -16,11 +16,13 @@ type ConditionFunc func(Container, *Factory) bool
 // Factory is a node in the dependency graph that represents a constructor provided by the user
 // and the basic attributes of the returned component (if applicable)
 type Factory struct {
-	order          int                   // order of this node in graph
+	g              int                   // order of this node in graph
 	key            reflect.Type          // key for this factory
+	name           string                // human readable name
+	order          int                   // the order of this factory
 	scope          string                // Factory scope
 	startup        bool                  // will be initialized with container
-	priority       int                   // priority of use
+	isReference    bool                  // is a single reference (true singleton)
 	factoryType    reflect.Type          // type information about constructor
 	factoryValue   reflect.Value         // constructor function
 	returnType     reflect.Type          // type information about return type.
@@ -68,6 +70,11 @@ func (f *Factory) Singleton() bool {
 	return f.scope == SCOPE_SINGLETON
 }
 
+// IsTrueSingleton returns true if is a reference for a singleton instance
+func (f *Factory) IsTrueSingleton() bool {
+	return f.isReference
+}
+
 // Prototype returns true if the scope = 'prototype'
 func (f *Factory) Prototype() bool {
 	return f.scope == SCOPE_PROTOTYPE
@@ -78,9 +85,15 @@ func (f *Factory) Startup() bool {
 	return f.startup
 }
 
-// Priority gets the priority of this components
-func (f *Factory) Priority() int {
-	return f.priority
+// Order the order value of this factory
+//
+// Higher values are interpreted as lower priority. As a consequence,
+// the object with the lowest value has the highest priority.
+//
+// Same order values will result in arbitrary sort
+// positions for the affected objects.
+func (f *Factory) Order() int {
+	return f.order
 }
 
 func (f *Factory) Constructor() reflect.Value {

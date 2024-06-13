@@ -109,6 +109,14 @@ func (c *container) Filter(options ...FactoryConfig) *FilteredFactories {
 	}).Sort(DefaultFactorySortLessFn)
 }
 
+// DefaultFactorySortLessFn is the default sorting function
+// used by the Filter method, which sorts the factories in
+// the following order:
+//
+// 1) Mock (test)
+// 2) Primary
+// 3) NOT Alternative
+// 4) Lower Order
 func DefaultFactorySortLessFn(a, b *Factory) bool {
 	if a.Mock() != b.Mock() {
 		// mock first (testing)
@@ -123,5 +131,5 @@ func DefaultFactorySortLessFn(a, b *Factory) bool {
 		return b.Alternative()
 	}
 
-	return a.Priority() < b.Priority()
+	return a.Order() < b.Order()
 }

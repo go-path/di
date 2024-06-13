@@ -19,12 +19,16 @@ func isError(t reflect.Type) bool {
 	return t.Implements(_typeErr)
 }
 
-func getContext(contexts ...context.Context) context.Context {
+func getContext(contexts ...context.Context) (ctx context.Context) {
 	if len(contexts) > 0 {
-		return contexts[0]
-	} else {
-		return context.Background()
+		ctx = contexts[0]
 	}
+
+	if ctx != nil {
+		return ctx
+	}
+
+	return context.Background()
 }
 
 // Key is a pointer to a type
@@ -61,13 +65,17 @@ func MustGetFrom[T any](c Container, ctx ...context.Context) T {
 	return o
 }
 
-func AllOf[T any](c Container, ctx context.Context) (o []T, e error) {
+func FilterOf[T any](c Container) *FilteredFactories {
 	key := Key[T]()
 	cond := Condition(func(c Container, f *Factory) bool {
 		return f.key == key || f.Type().AssignableTo(key)
 	})
 
-	return AllOfFilter[T](c.Filter(cond), ctx)
+	return c.Filter(cond)
+}
+
+func AllOf[T any](c Container, ctx context.Context) (o []T, e error) {
+	return AllOfFilter[T](FilterOf[T](c), ctx)
 }
 
 func AllOfFilter[T any](filter *FilteredFactories, ctx context.Context) (o []T, e error) {

@@ -70,7 +70,7 @@ func (g *graph) edgesFrom(u int) []int {
 func (g *graph) getParamOrder(param reflect.Type) []int {
 	var orders []int
 	for _, p := range g.container.factories[param] {
-		orders = append(orders, p.order)
+		orders = append(orders, p.g)
 	}
 	return orders
 }

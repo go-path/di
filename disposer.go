@@ -52,6 +52,7 @@ func (d *disposableAdapterImpl) Dispose() {
 	if d, ok := d.obj.(Disposable); ok {
 		d.Destroy()
 	}
+
 	if len(d.factory.disposers) > 0 {
 		for _, disposer := range d.factory.disposers {
 			disposer(d.obj)

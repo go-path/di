@@ -96,7 +96,7 @@ func TestGraphIsAcyclic(t *testing.T) {
 			p := &Factory{
 				parameterKeys: pt.params,
 			}
-			p.order = g.add(p)
+			p.g = g.add(p)
 			c.factories[pt.key] = append(c.factories[pt.key], p)
 		}
 		ok, cycle := g.isAcyclic()
@@ -155,7 +155,7 @@ func TestGraphIsCyclic(t *testing.T) {
 		g := cc.graph
 		for _, pt := range tt.providers {
 			p := &Factory{parameterKeys: pt.params}
-			p.order = g.add(p)
+			p.g = g.add(p)
 			cc.factories[pt.key] = append(cc.factories[pt.key], p)
 		}
 		ok, cycle := g.isAcyclic()

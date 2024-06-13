@@ -117,17 +117,17 @@ di.Register(
     func(a DependencyA, b DependencyB) MyComponent, error {
         return &myComponentImpl{a:a, b:b}
     }, 
-    di.Primary, di.Priority(1)
+    di.Primary, di.Order(1)
 )
 ```
 
 Caso o componente não precise de um construtor (true Singleton), utilize o padrão abaixo, retornando a instancia que será usada em todo o container.
 
 ```go
-di.Register(&myComponentImpl{}, di.Primary, di.Priority(2))
+di.Register(&myComponentImpl{}, di.Primary, di.Order(2))
 ```
 
-Se você deseja registrar um serviço/daemon, utilize o padrão abaixo. Esse formato só é útil para serviços que vão ser inicializado junto com o container (configuração `di.Startup(priority)`)
+Se você deseja registrar um serviço/daemon, utilize o padrão abaixo. Esse formato só é útil para serviços que vão ser inicializado junto com o container (configuração `di.Startup(order)`)
 
 ```go
 di.Register(
@@ -224,14 +224,18 @@ di.Register(func()  {
 }, Startup(100)) 
 ```
 
-### Priority
-Priority can be applied to any component to indicate in what order they should be used.
+### Order
+Order can be applied to any component to indicate in what order they should be used.
 
-If the component is marked as Startup, the priority determines its execution order.
+Higher values are interpreted as lower priority. As a consequence, the object with the lowest value has the highest priority.
 
-Priority is also used during dependency injection. The candidate with the highest priority will be injected.
+Same order values will result in arbitrary sort positions for the affected objects.
 
-A framework can implement filters and use priority to define the order of execution
+If the component is marked as Startup, the order determines its execution order.
+
+Order is also used during dependency injection. The candidate with the lower order will be injected.
+
+A framework can implement filters and use order to define the order of execution
 
 ### Qualify
 Qualify register a qualifier for the component. Anyone can define a new qualifier.

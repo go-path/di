@@ -57,7 +57,14 @@ func (s *scopeSingleton) Remove(reflect.Type, any) (any, error) {
 }
 
 func (s *scopeSingleton) Destroy() {
-
+	s.m.Lock()
+	disposers := s.disposers
+	s.disposers = make(map[reflect.Type]DisposableAdapter)
+	s.objects = make(map[reflect.Type]any)
+	defer s.m.Unlock()
+	for _, disposer := range disposers {
+		disposer.Dispose()
+	}
 }
 
 // getSingleton Return the (raw) singleton object registered under the given key.

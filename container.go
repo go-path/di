@@ -19,12 +19,12 @@ type Container interface {
 	// Initialize initialize all non-lazy singletons (startup)
 	Initialize(ctx ...context.Context) error
 
-	// RegisterScope Register the given scope, backed by the given ScopeI implementation.
-	RegisterScope(name string, scope ScopeI) error
-
 	Register(ctor any, opts ...FactoryConfig)
 
 	ShouldRegister(ctor any, opts ...FactoryConfig) error
+
+	// RegisterScope Register the given scope, backed by the given ScopeI implementation.
+	RegisterScope(name string, scope ScopeI) error
 
 	// Get return an instance, which may be shared or independent, of the specified component.
 	Get(key reflect.Type, ctx ...context.Context) (any, error)
@@ -252,12 +252,14 @@ func (c *container) ShouldRegister(funcOrRef any, options ...FactoryConfig) erro
 
 	factory := &Factory{
 		key:            returnKey,
+		name:           returnKey.String() + "_" + factoryValue.String(),
 		factoryType:    factoryType,
 		factoryValue:   factoryValue,
 		returnType:     returnType,
 		returnErrorIdx: returnErrorIdx,
 		returnValueIdx: returnValueIdx,
 		parameterKeys:  paramsKeys,
+		isReference:    isSingletonInstance,
 		scope:          SCOPE_SINGLETON,
 		qualifiers:     make(map[reflect.Type]bool),
 	}
@@ -287,7 +289,7 @@ func (c *container) ShouldRegister(funcOrRef any, options ...FactoryConfig) erro
 	oldFactories := c.factories[returnKey]
 	c.factories[returnKey] = append(c.factories[returnKey], factory)
 
-	factory.order = c.graph.add(factory)
+	factory.g = c.graph.add(factory)
 	if ok, cycle := c.graph.isAcyclic(); !ok {
 		// When a cycle is detected, recover the old providers to reset
 		// the providers map back to what it was before this node was
@@ -479,6 +481,16 @@ func (c *container) refreshAliasFn(loop func(func(*Parameter))) {
 // Get a managed component (by scope)
 func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance any, e error) {
 	ctx := getContext(contexts...)
+
+	if key == _keyContext {
+		// ignore context.Context
+		return ctx, nil
+	}
+
+	if key == _keyContainer {
+		// ignore Container
+		return c, nil
+	}
 
 	param := c.GetParam(key)
 
@@ -819,7 +831,7 @@ func (c *container) resolveFactory(p *Parameter) (*Factory, error) {
 		}
 
 		if first.Primary() {
-			if first.Priority() > second.Priority() || !second.Primary() {
+			if !second.Primary() || first.Order() < second.Order() {
 				// If exactly one 'primary' component exists among the candidates, it
 				// will be the injected value.
 				return first, nil
@@ -830,8 +842,8 @@ func (c *container) resolveFactory(p *Parameter) (*Factory, error) {
 			return first, nil
 		}
 
-		if first.Priority() > second.Priority() {
-			// The candidate with the highest priority will be injected.
+		if first.Order() < second.Order() {
+			// The candidate with the lower order will be injected.
 			return first, nil
 		}
 
@@ -840,12 +852,22 @@ func (c *container) resolveFactory(p *Parameter) (*Factory, error) {
 }
 
 func (c *container) Destroy() error {
-	// c.Cleanup()
-	// c.graph = &graph{container: c}
-	// c.factories = make(map[reflect.Type][]*Factory)
-	// c.singletonStorage = &storage{}
-	// c.testingHasMock = false
-	// c.testingMocks = make(map[reflect.Type]mockFn)
+	for name, scope := range c.scopes {
+		if name == SCOPE_SINGLETON || name == SCOPE_PROTOTYPE {
+			continue
+		}
+		scope.Destroy()
+	}
+	c.singletons.Destroy()
+
+	c.graph = nil
+	c.parent = nil
+	c.scopes = nil
+	c.knownParams = nil
+	c.factories = nil
+	c.singletons = nil
+	c.testingMocks = nil
+
 	return nil
 }
 
