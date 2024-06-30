@@ -8,7 +8,7 @@ This is The Way to do Dependency injection in Go.
 
 ## Show me the code!
 
-Source: https://github.com/go-path/di/examples/basic
+Source: https://github.com/go-path/di/tree/main/examples/basic
 
 
 ```go
