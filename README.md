@@ -96,7 +96,7 @@ Read our [Full Documentation][docs] to learn how to use **go-path/di**.
 > 
 > And obviously, this implementation uses [reflection](https://pkg.go.dev/reflect), which for some uninformed individuals can be detrimental. It is important to mention that we thoroughly sanitize our hands before handling any `Type` or `Value`.
 >
-> We will not be held responsible if you become a productive developer after coming into contact with any part of this **go-path/di**.
+> We will not be held responsible if you become a productive developer after coming into contact with any part of **go-path/di**.
 >
 > "Your path you must decide.” — Yoda
 
