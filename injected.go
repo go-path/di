@@ -3,6 +3,7 @@ package di
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 )
 
@@ -53,8 +54,9 @@ func Injected[T any]() func(Container, context.Context) (out T, err error) {
 
 		for i, fieldIndex := range depsFieldIdx {
 			// resolve dependency
-			if dep, e := ctn.Get(depsFieldKey[i], ctx); e != nil {
-				err = e
+			depk := depsFieldKey[i]
+			if dep, e := ctn.Get(depk, ctx); e != nil {
+				err = errors.Join(fmt.Errorf(`cannot resolve dependency "%s" for "%s"`, depk.String(), otp.String()), e)
 				return
 			} else {
 				nptr_val.Field(fieldIndex).Set(reflect.ValueOf(dep))

@@ -17,6 +17,7 @@ type ConditionFunc func(Container, *Factory) bool
 // and the basic attributes of the returned component (if applicable)
 type Factory struct {
 	g              int                   // order of this node in graph
+	id             int                   // factory unique id
 	key            reflect.Type          // key for this factory
 	name           string                // human readable name
 	order          int                   // the order of this factory
@@ -53,6 +54,11 @@ func (f *Factory) Create(args []reflect.Value) (any, error) {
 	}
 
 	return results[f.returnValueIdx].Interface(), nil
+}
+
+// Id gets the factory id
+func (f *Factory) Id() int {
+	return f.id
 }
 
 // Key gets the factory component Key (Key = reflect.TypeOf(ComponentType))

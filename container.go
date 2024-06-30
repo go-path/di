@@ -72,6 +72,7 @@ type container struct {
 }
 
 var (
+	fseq                    = 0
 	ctxCurrentInCreationKey ctxCurrentInCreationKeyType
 	initializersStereotype  = Stereotype(Singleton, Condition(func(c Container, f *Factory) bool {
 		return f.Startup()
@@ -84,7 +85,7 @@ var (
 	ErrMissingDependency     = errors.New("missing dependencies")
 	ErrCandidateNotFound     = errors.New("no candidate found")
 	ErrNoScopeNameDefined    = errors.New("no scope name defined for component")
-	ErrCurrentlyInCreation   = errors.New("requested bean is currently in creation")
+	ErrCurrentlyInCreation   = errors.New("requested component is currently in creation")
 	ErrNoScopeNameRegistered = errors.New("no Scope registered")
 )
 
@@ -250,7 +251,9 @@ func (c *container) ShouldRegister(funcOrRef any, options ...FactoryConfig) erro
 		}
 	}
 
+	fseq++
 	factory := &Factory{
+		id:             fseq,
 		key:            returnKey,
 		name:           returnKey.String() + "_" + factoryValue.String(),
 		factoryType:    factoryType,
@@ -471,7 +474,7 @@ func (c *container) refreshAliasFn(loop func(func(*Parameter))) {
 					p.factories[f] = true
 				} else {
 					p.candidates[f] = true
-					slog.Info(fmt.Sprintf("[di] '%s' is a candidate for '%s'\n", returnType.String(), paramType.String()))
+					slog.Info(fmt.Sprintf("[di] '%s' is a candidate for '%s'", returnType.String(), paramType.String()))
 				}
 			}
 		})
@@ -494,18 +497,6 @@ func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance
 
 	param := c.GetParam(key)
 
-	// eagerly check singleton cache for manually registered singletons.
-	if singleton := c.singletons.getSingleton(key); singleton != nil {
-		instance = singleton
-		return
-	}
-
-	// fail if we're already creating this instance: we're assumably within a circular reference.
-	if c.isInCreation(key, ctx) {
-		e = ErrCurrentlyInCreation
-		return
-	}
-
 	// Check if component exists in this container
 	if c.parent != nil && !c.Contains(key) {
 		// not found -> check parent.
@@ -515,6 +506,20 @@ func (c *container) Get(key reflect.Type, contexts ...context.Context) (instance
 	var factory *Factory
 	factory, e = c.resolveFactory(param)
 	if e != nil {
+		return
+	}
+
+	fid := factory.Id()
+
+	// eagerly check singleton cache for manually registered singletons.
+	if singleton := c.singletons.getSingleton(fid); singleton != nil {
+		instance = singleton
+		return
+	}
+
+	// fail if we're already creating this instance: we're assumably within a circular reference.
+	if c.isInCreation(fid, ctx) {
+		e = errors.Join(fmt.Errorf(`circular reference for "%s"`, key.String()), ErrCurrentlyInCreation)
 		return
 	}
 
@@ -561,17 +566,13 @@ func (c *container) createObject(factory *Factory, ctx context.Context, managed 
 		return
 	}
 
-	// args
-	var args []reflect.Value
-	if args, e = c.ResolveArgs(factory, ctx); e != nil {
-		return
-	}
-
-	key := factory.key
+	// key := factory.key
+	// factoryType := factory.factoryType // unique by factory
+	fid := factory.id // unique by factory
 
 	createObject := func() (out any, disposer DisposableAdapter, err error) {
 		defer func() {
-			ctx = c.afterCreation(key, ctx)
+			ctx = c.afterCreation(fid, ctx)
 
 			if err == nil && factory.ReturnsValue() && out != nil {
 				// instance created - initializers/post construct
@@ -585,7 +586,13 @@ func (c *container) createObject(factory *Factory, ctx context.Context, managed 
 				}
 			}
 		}()
-		ctx = c.beforeCreation(key, ctx)
+		ctx = c.beforeCreation(fid, ctx)
+
+		// args
+		var args []reflect.Value
+		if args, err = c.ResolveArgs(factory, ctx); err != nil {
+			return
+		}
 
 		if out, err = factory.Create(args); err != nil {
 			return
@@ -618,7 +625,7 @@ func (c *container) createObject(factory *Factory, ctx context.Context, managed 
 		}
 
 		// create component instance
-		instance, e = scope.Get(ctx, key, factory, createObject)
+		instance, e = scope.Get(ctx, factory, createObject)
 	} else {
 		instance, disposer, e = createObject()
 	}
@@ -718,35 +725,35 @@ func (c *container) checkMissingDependencies(f *Factory) error {
 }
 
 // isInCreation return whether the specified key is currently in creation.
-func (c *container) isInCreation(key reflect.Type, ctx context.Context) bool {
+func (c *container) isInCreation(fid int, ctx context.Context) bool {
 	if curVal := ctx.Value(ctxCurrentInCreationKey); curVal != nil {
-		if curVal == key {
+		if curVal == fid {
 			return true
-		} else if keyMap, isType := curVal.(map[reflect.Type]bool); isType {
-			return keyMap[key]
+		} else if keyMap, isType := curVal.(map[int]bool); isType {
+			return keyMap[fid]
 		}
 	}
 	return false
 }
 
 // beforeCreation callback before object creation. Registers the key as currently in creation.
-func (c *container) beforeCreation(key reflect.Type, ctx context.Context) context.Context {
+func (c *container) beforeCreation(fid int, ctx context.Context) context.Context {
 	curVal := ctx.Value(ctxCurrentInCreationKey)
 	if curVal == nil {
-		keyMap := map[reflect.Type]bool{}
-		keyMap[key] = true
+		keyMap := map[int]bool{}
+		keyMap[fid] = true
 		return context.WithValue(ctx, ctxCurrentInCreationKey, keyMap)
 	} else {
-		curVal.(map[reflect.Type]bool)[key] = true
+		curVal.(map[int]bool)[fid] = true
 		return ctx
 	}
 }
 
 // afterCreation callback after object creation. Marks the key as not in creation anymore.
-func (c *container) afterCreation(key reflect.Type, ctx context.Context) context.Context {
+func (c *container) afterCreation(fid int, ctx context.Context) context.Context {
 	curVal := ctx.Value(ctxCurrentInCreationKey)
-	if keyMap, isType := curVal.(map[reflect.Type]bool); isType {
-		delete(keyMap, key)
+	if keyMap, isType := curVal.(map[int]bool); isType {
+		delete(keyMap, fid)
 		if len(keyMap) == 0 {
 			return context.WithValue(ctx, ctxCurrentInCreationKey, nil)
 		}
