@@ -6,14 +6,12 @@ Thanks for considering contributing to **go-path/di**! This guide has a few tips
 
 Any bugs (or things that look like bugs) can be reported on the [GitHub issue tracker](https://github.com/go-path/di/issues).
 
-Make sure you check to see if someone has already reported your bug first! Don't fret about it; if we notice a duplicate 
-we'll send you a link to the right issue!
+Make sure you check to see if someone has already reported your bug first!
 
 ## Feature Requests
 
 If there are any features you think are missing from **go-path/di**, you can start a [Discussion](https://github.com/go-path/di/discussions).
 
-Just like bug reports, take a peak at the issue tracker for duplicates before opening a new discussion.
 
 ## Documentation
 [go-path/di documentation](https://go-path.github.io/di/) is built using [Docsify](https://docsify.js.org/#/), a fairly simple documentation generator.
