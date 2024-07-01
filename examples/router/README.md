@@ -1,14 +1,23 @@
 # go-path/di router example
 
-Exemplo simples de como pode usar o **go-path/di** para estruturar as rotas de um projeto, diminuindo o acoplamento entre os módulos da aplicação.
+Simple example of how you can use **go-path/di** to structure a project's routes, reducing coupling between application modules.
 
-O diretório `controller` possui as controllers que são inicializadas automaticamente pelo `Router`.
-
-
-O `lib.Router` obtém do `Container` todas as instancias que possui o método `Path() string`. Após isso, faz uso de reflection para obter os métodos com o padão `$MethodName(r http.Request, w.HttpWriter) [response, error]` e faz o mapeamento da rota automaticamente.
+The `controller` directory has the controllers that are automatically initialized by the `Router`.
 
 
-O `lib.Server` faz a inicialização do servidor http, utilizando  
+`lib.Router` obtains from `Container` all instances that have the `Path() string` method. After that, it uses reflection to obtain the methods with the pattern `$MethodName(r http.Request, w.HttpWriter) [response, error]` and maps the route automatically.
+
+
+`lib.Server` initializes the http server
+
+Routes
+
+- http://localhost:8081/
+- http://localhost:8081/ping
+- http://localhost:8081/star-wars
+- http://localhost:8081/star-wars/people?id=1
+- http://localhost:8081/star-wars/planets?id=1
+- http://localhost:8081/star-wars/starship?id=1
 
 
 

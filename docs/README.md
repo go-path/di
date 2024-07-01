@@ -101,7 +101,7 @@ You can browse or search for specific subjects in the side menu. Here are some r
          <div class="panel-body">
             <p>
                 <a href="#/concepts?id=general-concepts">
-                    <img src="/assets/icon-parts.png" data-origin="assets/icon-parts.png" alt="General Concepts" data-no-zoom>
+                    <img src="./assets/icon-parts.png" data-origin="assets/icon-parts.png" alt="General Concepts" data-no-zoom>
                 </a>
             </p>
          </div>
@@ -115,7 +115,7 @@ You can browse or search for specific subjects in the side menu. Here are some r
          <div class="panel-body">
             <p> 
                 <a href="#/component?id=component">
-                    <img src="/assets/icon-component.png" data-origin="assets/icon-component.png" alt="Components" data-no-zoom>
+                    <img src="./assets/icon-component.png" data-origin="assets/icon-component.png" alt="Components" data-no-zoom>
                 </a>
             </p>
          </div>
@@ -129,7 +129,7 @@ You can browse or search for specific subjects in the side menu. Here are some r
          <div class="panel-body">
             <p>
                 <a href="#/factory?id=factory-config">
-                    <img src="/assets/icon-config.png" alt="Factory Config" data-no-zoom data-origin="assets/icon-config.png">
+                    <img src="./assets/icon-config.png" alt="Factory Config" data-no-zoom data-origin="assets/icon-config.png">
                 </a>
             </p>
          </div>
@@ -143,7 +143,7 @@ You can browse or search for specific subjects in the side menu. Here are some r
          <div class="panel-body">
             <p>
                 <a href="#/examples">
-                    <img src="/assets/icon-tutorial.png" data-origin="assets/icon-tutorial.png" alt="Examples" data-no-zoom="">
+                    <img src="./assets/icon-tutorial.png" data-origin="assets/icon-tutorial.png" alt="Examples" data-no-zoom="">
                 </a>
             </p>
          </div>
