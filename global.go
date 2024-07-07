@@ -21,6 +21,21 @@ func Register(ctor any, opts ...FactoryConfig) {
 	global.Register(ctor, opts...)
 }
 
+// Injector simplifies component registration through reflection.
+//
+// Example:
+//
+//	type myController struct {
+//		MyService Service `inject:""`
+//	}
+//
+//	di.Injected[*myController]()
+//
+// In the example above, the MyService dependency will be injected automatically.
+func Injected[T any](opts ...FactoryConfig) {
+	InjectedTo[T](global, opts...)
+}
+
 func ShouldRegister(ctor any, opts ...FactoryConfig) error {
 	return global.ShouldRegister(ctor, opts...)
 }

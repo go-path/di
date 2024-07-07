@@ -29,5 +29,5 @@ func (s *Server) Initialize() {
 }
 
 func init() {
-	di.Register(di.Injected[*Server](), di.Startup(200))
+	di.Injected[*Server](di.Startup(200))
 }

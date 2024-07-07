@@ -46,6 +46,21 @@ func KeyOf(t any) reflect.Type {
 	return reflect.TypeOf(t)
 }
 
+// Injector simplifies component registration through reflection.
+//
+// Example:
+//
+//	type myController struct {
+//		MyService Service `inject:""`
+//	}
+//
+//	di.InjectedTo[*myController](di.Global())
+//
+// In the example above, the MyService dependency will be injected automatically.
+func InjectedTo[T any](c Container, opts ...FactoryConfig) {
+	c.Register(Injector[T](), opts...)
+}
+
 // GetFrom get a instance from container using generics (returns error)
 func GetFrom[T any](c Container, contexts ...context.Context) (o T, e error) {
 	if v, err := c.Get(Key[T](), contexts...); err != nil {

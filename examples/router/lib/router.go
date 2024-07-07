@@ -111,5 +111,5 @@ func (r *Router) Initialize() {
 func init() {
 	// register as startup component, injecting dependencies
 	// executes before server startup
-	di.Register(di.Injected[*Router](), di.Startup(100))
+	di.Injected[*Router](di.Startup(100))
 }

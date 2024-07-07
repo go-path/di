@@ -9,7 +9,7 @@ import (
 
 var ErrNotStruct = errors.New("the Injected method only accepts struct or *struct")
 
-// Injected simplifies component registration through reflection.
+// Injector simplifies component registration through reflection.
 //
 // Example:
 //
@@ -17,29 +17,32 @@ var ErrNotStruct = errors.New("the Injected method only accepts struct or *struc
 //		MyService Service `inject:""`
 //	}
 //
-//	di.Register(di.Injected[*myController]())
+//	di.Register(di.Injector[*myController]())
 //
 // In the example above, the MyService dependency will be injected automatically.
-func Injected[T any]() func(Container, context.Context) (out T, err error) {
-	otp := reflect.TypeOf((*T)(nil)).Elem()
-	otp_nptr := otp
-	is_ptr := (otp.Kind() == reflect.Pointer)
-	if is_ptr {
-		otp_nptr = otp.Elem()
+//
+// @TODO:  embedded structs
+func Injector[T any]() func(Container, context.Context) (out T, err error) {
+	structType := reflect.TypeOf((*T)(nil)).Elem()
+	structTypeNoPtr := structType
+	isPointer := (structType.Kind() == reflect.Pointer)
+	if isPointer {
+		structTypeNoPtr = structType.Elem()
 	}
 
-	if otp_nptr.Kind() != reflect.Struct {
+	if structTypeNoPtr.Kind() != reflect.Struct {
 		panic(ErrNotStruct)
 	}
 
 	var depsFieldIdx []int
 	var depsFieldKey []reflect.Type
 
-	for fieldIndex := 0; fieldIndex < otp_nptr.NumField(); fieldIndex++ {
-		field := otp_nptr.Field(fieldIndex)
+	for fieldIndex := 0; fieldIndex < structTypeNoPtr.NumField(); fieldIndex++ {
+		field := structTypeNoPtr.Field(fieldIndex)
 		if !field.IsExported() {
 			continue
 		}
+
 		if _, hasTag := field.Tag.Lookup("inject"); !hasTag {
 			continue
 		}
@@ -49,21 +52,21 @@ func Injected[T any]() func(Container, context.Context) (out T, err error) {
 	}
 
 	return func(ctn Container, ctx context.Context) (out T, err error) {
-		nptr_ptr := reflect.New(otp_nptr) // Pointer Struct
-		nptr_val := nptr_ptr.Elem()       // Value  Struct
+		nptr_ptr := reflect.New(structTypeNoPtr) // Pointer Struct
+		nptr_val := nptr_ptr.Elem()              // Value  Struct
 
 		for i, fieldIndex := range depsFieldIdx {
 			// resolve dependency
 			depk := depsFieldKey[i]
 			if dep, e := ctn.Get(depk, ctx); e != nil {
-				err = errors.Join(fmt.Errorf(`cannot resolve dependency "%s" for "%s"`, depk.String(), otp.String()), e)
+				err = errors.Join(fmt.Errorf(`cannot resolve dependency "%s" for "%s"`, depk.String(), structType.String()), e)
 				return
 			} else {
 				nptr_val.Field(fieldIndex).Set(reflect.ValueOf(dep))
 			}
 		}
 
-		if is_ptr {
+		if isPointer {
 			// interface {*Struct}
 			out = (nptr_val.Addr().Interface()).(T)
 		} else {

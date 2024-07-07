@@ -17,5 +17,5 @@ func (p *PadawanController) Initialize() {
 
 func init() {
 	// register as startup component, injecting dependencies
-	di.Register(di.Injected[*PadawanController](), di.Startup(100))
+	di.Injected[*PadawanController](di.Startup(100))
 }

@@ -59,7 +59,7 @@ func (s* MyService) Intitialize(){
 }
 
 func init(){
-    di.Register(di.Injected[*MyService]())
+    di.Injected[*MyService]()
 }
 ```
 
