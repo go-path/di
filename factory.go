@@ -66,6 +66,11 @@ func (f *Factory) Key() reflect.Type {
 	return f.key
 }
 
+// human readable name
+func (f *Factory) Name() string {
+	return f.name
+}
+
 // Scope gets the scope name
 func (f *Factory) Scope() string {
 	return f.scope

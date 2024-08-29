@@ -123,6 +123,8 @@ func (c *container) Initialize(contexts ...context.Context) error {
 
 	c.paramsMu.Unlock()
 
+	// @TODO: Fazer log de todos os Factories registrados
+
 	return c.Filter(initializersStereotype).Foreach(func(f *Factory) (bool, error) {
 		if _, _, err := c.GetObjectFactory(f, true, ctx)(); err != nil {
 			return true, err

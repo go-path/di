@@ -23,7 +23,23 @@ var ErrNotStruct = errors.New("the Injected method only accepts struct or *struc
 //
 // @TODO:  embedded structs
 func Injector[T any]() func(Container, context.Context) (out T, err error) {
-	structType := reflect.TypeOf((*T)(nil)).Elem()
+	injector := InjectorOf(reflect.TypeOf((*T)(nil)).Elem())
+	return func(ctn Container, ctx context.Context) (out T, err error) {
+		var o any
+		if o, err = injector(ctn, ctx); err == nil {
+			out = o.(T)
+		}
+		return
+	}
+}
+
+type IntectorFn func(Container, context.Context) (out any, err error)
+
+var (
+	injectors = map[reflect.Type]IntectorFn{}
+)
+
+func InjectorOf(structType reflect.Type) IntectorFn {
 	structTypeNoPtr := structType
 	isPointer := (structType.Kind() == reflect.Pointer)
 	if isPointer {
@@ -32,6 +48,10 @@ func Injector[T any]() func(Container, context.Context) (out T, err error) {
 
 	if structTypeNoPtr.Kind() != reflect.Struct {
 		panic(ErrNotStruct)
+	}
+
+	if injector, exists := injectors[structType]; exists {
+		return injector
 	}
 
 	var depsFieldIdx []int
@@ -51,7 +71,7 @@ func Injector[T any]() func(Container, context.Context) (out T, err error) {
 		depsFieldKey = append(depsFieldKey, KeyOf(field.Type))
 	}
 
-	return func(ctn Container, ctx context.Context) (out T, err error) {
+	injector := func(ctn Container, ctx context.Context) (out any, err error) {
 		nptr_ptr := reflect.New(structTypeNoPtr) // Pointer Struct
 		nptr_val := nptr_ptr.Elem()              // Value  Struct
 
@@ -59,6 +79,28 @@ func Injector[T any]() func(Container, context.Context) (out T, err error) {
 			// resolve dependency
 			depk := depsFieldKey[i]
 			if dep, e := ctn.Get(depk, ctx); e != nil {
+				// automatically inject Struct (prototype scoped)
+				if errors.Is(e, ErrCandidateNotFound) {
+					st := depk
+					if st.Kind() == reflect.Pointer {
+						st = st.Elem()
+					}
+					if st.Kind() == reflect.Struct {
+						injector := InjectorOf(depk)
+						if dep, ierr := injector(ctn, ctx); ierr != nil {
+							e = ierr
+						} else {
+							// instance created - initializers/post construct
+							if i, ok := dep.(Initializable); ok {
+								i.Initialize()
+							}
+
+							nptr_val.Field(fieldIndex).Set(reflect.ValueOf(dep))
+							continue
+						}
+					}
+				}
+
 				err = errors.Join(fmt.Errorf(`cannot resolve dependency "%s" for "%s"`, depk.String(), structType.String()), e)
 				return
 			} else {
@@ -68,12 +110,14 @@ func Injector[T any]() func(Container, context.Context) (out T, err error) {
 
 		if isPointer {
 			// interface {*Struct}
-			out = (nptr_val.Addr().Interface()).(T)
+			out = nptr_val.Addr().Interface()
 		} else {
 			// interface {struct}
-			out = (nptr_val.Interface()).(T)
+			out = nptr_val.Interface()
 		}
 
 		return
 	}
+	injectors[structType] = injector
+	return injector
 }
